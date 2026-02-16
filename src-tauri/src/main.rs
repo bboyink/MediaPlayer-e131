@@ -104,6 +104,179 @@ async fn select_folder(app_handle: tauri::AppHandle) -> Result<Option<String>, S
     Ok(folder.map(|p| p.to_string()))
 }
 
+#[derive(serde::Serialize)]
+struct DisplayInfo {
+    index: usize,
+    name: String,
+    is_primary: bool,
+    width: u32,
+    height: u32,
+}
+
+#[tauri::command]
+fn get_available_displays(app_handle: tauri::AppHandle) -> Result<Vec<DisplayInfo>, String> {
+    use tauri::Manager;
+    
+    // Try to get monitors from the main window
+    let monitors = if let Some(window) = app_handle.get_webview_window("main") {
+        window.available_monitors().map_err(|e| e.to_string())?
+    } else {
+        // Fallback: try to get from app
+        match app_handle.available_monitors() {
+            Ok(m) => m,
+            Err(_) => {
+                // Return default display if we can't enumerate
+                return Ok(vec![DisplayInfo {
+                    index: 0,
+                    name: "Primary Display".to_string(),
+                    is_primary: true,
+                    width: 1920,
+                    height: 1080,
+                }]);
+            }
+        }
+    };
+    
+    let mut displays = Vec::new();
+    for (index, monitor) in monitors.iter().enumerate() {
+        let size = monitor.size();
+        let name = monitor.name()
+            .map(|n| n.to_string())
+            .unwrap_or_else(|| format!("Display {}", index + 1));
+        displays.push(DisplayInfo {
+            index,
+            name,
+            is_primary: index == 0, // First monitor is typically primary
+            width: size.width,
+            height: size.height,
+        });
+    }
+    
+    if displays.is_empty() {
+        // Fallback if no monitors detected
+        displays.push(DisplayInfo {
+            index: 0,
+            name: "Primary Display".to_string(),
+            is_primary: true,
+            width: 1920,
+            height: 1080,
+        });
+    }
+    
+    Ok(displays)
+}
+
+#[tauri::command]
+async fn open_output_window(
+    app_handle: tauri::AppHandle,
+    monitor_id: String,
+    display_index: usize,
+    width: u32,
+    height: u32,
+) -> Result<(), String> {
+    use tauri::Manager;
+    use tauri::webview::WebviewWindowBuilder;
+    
+    let window_label = format!("output-{}", monitor_id);
+    
+    // Close existing window if it exists
+    if let Some(existing) = app_handle.get_webview_window(&window_label) {
+        let _ = existing.close();
+    }
+    
+    // Get available monitors
+    let monitors = app_handle.available_monitors().map_err(|e| e.to_string())?;
+    
+    // Get the target monitor for positioning
+    let monitor = monitors.get(display_index)
+        .ok_or_else(|| format!("Display index {} not found", display_index))?;
+    
+    let position = monitor.position();
+    let size = monitor.size();
+    
+    println!("Monitor {} info: position=({}, {}), size={}x{}", 
+        display_index, position.x, position.y, size.width, size.height);
+    println!("Opening output window '{}' on display {} at position ({}, {}) with resolution {}x{}", 
+        window_label, display_index, position.x, position.y, width, height);
+    
+    // Build and create the window with configured resolution
+    // Using center position and default settings to test basic window creation
+    let window = WebviewWindowBuilder::new(
+        &app_handle,
+        &window_label,
+        tauri::WebviewUrl::App("output.html".into())
+    )
+    .title(format!("Output Window {}", monitor_id))
+    .inner_size(width as f64, height as f64)
+    .center()
+    .resizable(true)
+    .decorations(true)
+    .visible(true)
+    .build()
+    .map_err(|e| format!("Failed to build window: {}", e))?;
+    
+    println!("Output window '{}' created successfully", window_label);
+    
+    // Force window to front
+    window.show().map_err(|e| format!("Failed to show window: {}", e))?;
+    window.set_focus().map_err(|e| format!("Failed to focus window: {}", e))?;
+    
+    println!("Output window '{}' shown and focused", window_label);
+    
+    Ok(())
+}
+
+#[tauri::command]
+async fn close_output_window(
+    app_handle: tauri::AppHandle,
+    monitor_id: String,
+) -> Result<(), String> {
+    use tauri::Manager;
+    
+    let window_label = format!("output-{}", monitor_id);
+    
+    if let Some(window) = app_handle.get_webview_window(&window_label) {
+        window.close().map_err(|e| e.to_string())?;
+    }
+    
+    Ok(())
+}
+
+#[tauri::command]
+async fn update_output_window(
+    app_handle: tauri::AppHandle,
+    monitor_id: String,
+    media_url: Option<String>,
+    dimmer: u8,
+) -> Result<(), String> {
+    use tauri::Manager;
+    
+    let window_label = format!("output-{}", monitor_id);
+    
+    println!("update_output_window called for '{}' with media: {:?}, dimmer: {}", 
+        window_label, media_url, dimmer);
+    
+    if let Some(window) = app_handle.get_webview_window(&window_label) {
+        // Use evaluate_script to directly call updateMedia function in the window
+        let media_url_js = match &media_url {
+            Some(url) => format!("'{}'", url.replace("'", "\\'")),
+            None => "null".to_string()
+        };
+        
+        let script = format!("if (typeof updateMedia === 'function') {{ updateMedia({}, {}); console.log('updateMedia called with:', {}, {}); }} else {{ console.error('updateMedia function not found!'); }}", 
+            media_url_js, dimmer, media_url_js, dimmer);
+        
+        println!("Executing script in window '{}'", window_label);
+        window.eval(&script)
+            .map_err(|e| format!("Failed to execute script: {}", e))?;
+        println!("Script executed successfully");
+    } else {
+        println!("Window '{}' not found", window_label);
+    }
+    
+    Ok(())
+}
+
 fn main() {
     // Load configuration from file or create default
     let config = AppConfig::load().unwrap_or_else(|e| {
@@ -125,7 +298,11 @@ fn main() {
             get_network_interfaces,
             scan_media_folder,
             get_media_files,
-            select_folder
+            select_folder,
+            get_available_displays,
+            open_output_window,
+            close_output_window,
+            update_output_window
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

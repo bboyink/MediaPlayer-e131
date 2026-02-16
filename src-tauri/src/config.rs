@@ -74,6 +74,7 @@ pub struct MonitorConfig {
     pub media_folder: PathBuf,
     pub resolution: Resolution,
     pub orientation: Orientation,
+    pub display_index: usize,
 }
 
 impl Default for MonitorConfig {
@@ -84,6 +85,7 @@ impl Default for MonitorConfig {
             media_folder: PathBuf::new(),
             resolution: Resolution::default(),
             orientation: Orientation::default(),
+            display_index: 0,
         }
     }
 }

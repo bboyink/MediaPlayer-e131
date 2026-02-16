@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { convertFileSrc } from '@tauri-apps/api/core'
-import { AppConfig, NetworkInterface } from './types'
+import { AppConfig, NetworkInterface, DisplayInfo } from './types'
 import Slider from 'rc-slider'
 import videojs from 'video.js'
 import 'video.js/dist/video-js.css'
@@ -11,11 +11,13 @@ import './App.css'
 function App() {
   const [config, setConfig] = useState<AppConfig | null>(null)
   const [networkInterfaces, setNetworkInterfaces] = useState<NetworkInterface[]>([])
+  const [availableDisplays, setAvailableDisplays] = useState<DisplayInfo[]>([])
   const [activeSection, setActiveSection] = useState<'dmx' | 'config' | 'layout' | 'preview'>('dmx')
 
   useEffect(() => {
     loadConfig()
     loadNetworkInterfaces()
+    loadAvailableDisplays()
   }, [])
 
   const loadConfig = async () => {
@@ -26,6 +28,24 @@ function App() {
   const loadNetworkInterfaces = async () => {
     const interfaces = await invoke<NetworkInterface[]>('get_network_interfaces')
     setNetworkInterfaces(interfaces)
+  }
+
+  const loadAvailableDisplays = async () => {
+    try {
+      const displays = await invoke<DisplayInfo[]>('get_available_displays')
+      console.log('Available displays:', displays)
+      setAvailableDisplays(displays)
+    } catch (err) {
+      console.error('Failed to load displays:', err)
+      // Fallback to single display
+      setAvailableDisplays([{
+        index: 0,
+        name: 'Primary Display',
+        is_primary: true,
+        width: 1920,
+        height: 1080
+      }])
+    }
   }
 
   const saveConfig = async (newConfig: AppConfig) => {
@@ -45,7 +65,7 @@ function App() {
   return (
     <div className="app">
       <nav className="left-nav">
-        <h1>MediaPlayer</h1>
+        <h1>StagePlayer 1.0</h1>
         <button
           className={activeSection === 'dmx' ? 'active' : ''}
           onClick={() => setActiveSection('dmx')}
@@ -90,7 +110,7 @@ function App() {
           />
         )}
         {activeSection === 'config' && (
-          <ConfigSection config={config} saveConfig={saveConfig} />
+          <ConfigSection config={config} saveConfig={saveConfig} availableDisplays={availableDisplays} />
         )}
         {activeSection === 'layout' && (
           <LayoutSection config={config} saveConfig={saveConfig} />
@@ -195,7 +215,15 @@ function DmxSection({
 }
 
 // Configuration Section Component
-function ConfigSection({ config, saveConfig }: { config: AppConfig, saveConfig: (cfg: AppConfig) => void }) {
+function ConfigSection({ 
+  config, 
+  saveConfig, 
+  availableDisplays 
+}: { 
+  config: AppConfig
+  saveConfig: (cfg: AppConfig) => void
+  availableDisplays: DisplayInfo[]
+}) {
   const browseFolderMonitor1 = async () => {
     try {
       const selected = await invoke<string | null>('select_folder')
@@ -257,9 +285,24 @@ function ConfigSection({ config, saveConfig }: { config: AppConfig, saveConfig: 
             })}
           />
         </label>
-        <p className="info">
-          Clip: {config.monitor1.start_channel}, Dimmer: {config.monitor1.start_channel + 1}, Playtype: {config.monitor1.start_channel + 2}
-        </p>
+        
+        <label>
+          Output Display:
+          <select
+            className="display-select"
+            value={config.monitor1.display_index}
+            onChange={(e) => saveConfig({
+              ...config,
+              monitor1: { ...config.monitor1, display_index: parseInt(e.target.value) }
+            })}
+          >
+            {availableDisplays.map((display) => (
+              <option key={display.index} value={display.index}>
+                {display.name} ({display.width}×{display.height}){display.is_primary ? ' - Primary' : ''}
+              </option>
+            ))}
+          </select>
+        </label>
         
         <label>
           Media Folder:
@@ -277,6 +320,80 @@ function ConfigSection({ config, saveConfig }: { config: AppConfig, saveConfig: 
             </button>
           </div>
         </label>
+        
+        <label>
+          Resolution:
+          <select
+            value={config.monitor1.resolution.type}
+            onChange={(e) => {
+              const type = e.target.value as 'HD' | 'FourK' | 'Custom'
+              let newResolution: typeof config.monitor1.resolution
+              if (type === 'HD') {
+                newResolution = { type: 'HD', width: 1920, height: 1080 }
+              } else if (type === 'FourK') {
+                newResolution = { type: 'FourK', width: 3840, height: 2160 }
+              } else {
+                // Keep existing custom values or default to HD resolution
+                const currentWidth = config.monitor1.resolution.width || 1920
+                const currentHeight = config.monitor1.resolution.height || 1080
+                newResolution = { type: 'Custom', width: currentWidth, height: currentHeight }
+              }
+              saveConfig({
+                ...config,
+                monitor1: { ...config.monitor1, resolution: newResolution }
+              })
+            }}
+          >
+            <option value="HD">HD (1920×1080)</option>
+            <option value="FourK">4K (3840×2160)</option>
+            <option value="Custom">Custom</option>
+          </select>
+        </label>
+        
+        {config.monitor1.resolution.type === 'Custom' && (
+          <>
+            <label>
+              Width:
+              <input
+                type="number"
+                min="1"
+                max="7680"
+                value={config.monitor1.resolution.width}
+                onChange={(e) => saveConfig({
+                  ...config,
+                  monitor1: {
+                    ...config.monitor1,
+                    resolution: {
+                      type: 'Custom',
+                      width: parseInt(e.target.value) || 1920,
+                      height: config.monitor1.resolution.height
+                    }
+                  }
+                })}
+              />
+            </label>
+            <label>
+              Height:
+              <input
+                type="number"
+                min="1"
+                max="4320"
+                value={config.monitor1.resolution.height}
+                onChange={(e) => saveConfig({
+                  ...config,
+                  monitor1: {
+                    ...config.monitor1,
+                    resolution: {
+                      type: 'Custom',
+                      width: config.monitor1.resolution.width,
+                      height: parseInt(e.target.value) || 1080
+                    }
+                  }
+                })}
+              />
+            </label>
+          </>
+        )}
         
         <label>
           Orientation:
@@ -320,9 +437,24 @@ function ConfigSection({ config, saveConfig }: { config: AppConfig, saveConfig: 
             })}
           />
         </label>
-        <p className="info">
-          Clip: {config.monitor2.start_channel}, Dimmer: {config.monitor2.start_channel + 1}, Playtype: {config.monitor2.start_channel + 2}
-        </p>
+        
+        <label>
+          Output Display:
+          <select
+            className="display-select"
+            value={config.monitor2.display_index}
+            onChange={(e) => saveConfig({
+              ...config,
+              monitor2: { ...config.monitor2, display_index: parseInt(e.target.value) }
+            })}
+          >
+            {availableDisplays.map((display) => (
+              <option key={display.index} value={display.index}>
+                {display.name} ({display.width}×{display.height}){display.is_primary ? ' - Primary' : ''}
+              </option>
+            ))}
+          </select>
+        </label>
         
         <label>
           Media Folder:
@@ -340,6 +472,80 @@ function ConfigSection({ config, saveConfig }: { config: AppConfig, saveConfig: 
             </button>
           </div>
         </label>
+        
+        <label>
+          Resolution:
+          <select
+            value={config.monitor2.resolution.type}
+            onChange={(e) => {
+              const type = e.target.value as 'HD' | 'FourK' | 'Custom'
+              let newResolution: typeof config.monitor2.resolution
+              if (type === 'HD') {
+                newResolution = { type: 'HD', width: 1920, height: 1080 }
+              } else if (type === 'FourK') {
+                newResolution = { type: 'FourK', width: 3840, height: 2160 }
+              } else {
+                // Keep existing custom values or default to HD resolution
+                const currentWidth = config.monitor2.resolution.width || 1920
+                const currentHeight = config.monitor2.resolution.height || 1080
+                newResolution = { type: 'Custom', width: currentWidth, height: currentHeight }
+              }
+              saveConfig({
+                ...config,
+                monitor2: { ...config.monitor2, resolution: newResolution }
+              })
+            }}
+          >
+            <option value="HD">HD (1920×1080)</option>
+            <option value="FourK">4K (3840×2160)</option>
+            <option value="Custom">Custom</option>
+          </select>
+        </label>
+        
+        {config.monitor2.resolution.type === 'Custom' && (
+          <>
+            <label>
+              Width:
+              <input
+                type="number"
+                min="1"
+                max="7680"
+                value={config.monitor2.resolution.width}
+                onChange={(e) => saveConfig({
+                  ...config,
+                  monitor2: {
+                    ...config.monitor2,
+                    resolution: {
+                      type: 'Custom',
+                      width: parseInt(e.target.value) || 1920,
+                      height: config.monitor2.resolution.height
+                    }
+                  }
+                })}
+              />
+            </label>
+            <label>
+              Height:
+              <input
+                type="number"
+                min="1"
+                max="4320"
+                value={config.monitor2.resolution.height}
+                onChange={(e) => saveConfig({
+                  ...config,
+                  monitor2: {
+                    ...config.monitor2,
+                    resolution: {
+                      type: 'Custom',
+                      width: config.monitor2.resolution.width,
+                      height: parseInt(e.target.value) || 1080
+                    }
+                  }
+                })}
+              />
+            </label>
+          </>
+        )}
         
         <label>
           Orientation:
@@ -398,50 +604,66 @@ function LayoutSection({ config, saveConfig }: { config: AppConfig, saveConfig: 
         <div className="monitor-visualization">
           {config.layout === 'HorizontalSideBySide' && (
             <div className="layout-horizontal-side">
-              <div className={`monitor-box ${config.monitor1.orientation}`}>
-                <span>Monitor 1</span>
-                <span className="orientation">{config.monitor1.orientation}</span>
-              </div>
-              <div className={`monitor-box ${config.monitor2.orientation}`}>
-                <span>Monitor 2</span>
-                <span className="orientation">{config.monitor2.orientation}</span>
-              </div>
+              {config.monitor1.enabled && (
+                <div className={`monitor-box ${config.monitor1.orientation}`}>
+                  <span>Monitor 1</span>
+                  <span className="orientation">{config.monitor1.orientation}</span>
+                </div>
+              )}
+              {config.monitor2.enabled && (
+                <div className={`monitor-box ${config.monitor2.orientation}`}>
+                  <span>Monitor 2</span>
+                  <span className="orientation">{config.monitor2.orientation}</span>
+                </div>
+              )}
             </div>
           )}
           {config.layout === 'HorizontalStacked' && (
             <div className="layout-horizontal-stacked">
-              <div className={`monitor-box ${config.monitor1.orientation}`}>
-                <span>Monitor 1</span>
-                <span className="orientation">{config.monitor1.orientation}</span>
-              </div>
-              <div className={`monitor-box ${config.monitor2.orientation}`}>
-                <span>Monitor 2</span>
-                <span className="orientation">{config.monitor2.orientation}</span>
-              </div>
+              {config.monitor1.enabled && (
+                <div className={`monitor-box ${config.monitor1.orientation}`}>
+                  <span>Monitor 1</span>
+                  <span className="orientation">{config.monitor1.orientation}</span>
+                </div>
+              )}
+              {config.monitor2.enabled && (
+                <div className={`monitor-box ${config.monitor2.orientation}`}>
+                  <span>Monitor 2</span>
+                  <span className="orientation">{config.monitor2.orientation}</span>
+                </div>
+              )}
             </div>
           )}
           {config.layout === 'VerticalSideBySide' && (
             <div className="layout-vertical-side">
-              <div className={`monitor-box ${config.monitor1.orientation}`}>
-                <span>Monitor 1</span>
-                <span className="orientation">{config.monitor1.orientation}</span>
-              </div>
-              <div className={`monitor-box ${config.monitor2.orientation}`}>
-                <span>Monitor 2</span>
-                <span className="orientation">{config.monitor2.orientation}</span>
-              </div>
+              {config.monitor1.enabled && (
+                <div className={`monitor-box ${config.monitor1.orientation}`}>
+                  <span>Monitor 1</span>
+                  <span className="orientation">{config.monitor1.orientation}</span>
+                </div>
+              )}
+              {config.monitor2.enabled && (
+                <div className={`monitor-box ${config.monitor2.orientation}`}>
+                  <span>Monitor 2</span>
+                  <span className="orientation">{config.monitor2.orientation}</span>
+                </div>
+              )}
             </div>
           )}
           {config.layout === 'VerticalStacked' && (
             <div className="layout-vertical-stacked">
-              <div className={`monitor-box ${config.monitor1.orientation}`}>
-                <span>Monitor 1</span>
-                <span className="orientation">{config.monitor1.orientation}</span>
-              </div>
-              <div className={`monitor-box ${config.monitor2.orientation}`}>
-                <span>Monitor 2</span>
-                <span className="orientation">{config.monitor2.orientation}</span>
-              </div>
+              {config.monitor1.enabled && (
+                <div className={`monitor-box ${config.monitor1.orientation}`}>
+                  <span>Monitor 1</span>
+                  <span className="orientation">{config.monitor1.orientation}</span>
+                </div>
+              )}
+              {config.monitor2.enabled && (
+                <div className={`monitor-box ${config.monitor2.orientation}`}>
+                  <span>Monitor 2</span>
+                  <span className="orientation">{config.monitor2.orientation}</span>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -464,6 +686,10 @@ function PreviewSection({ config, saveConfig }: { config: AppConfig, saveConfig:
   
   const [monitor1Files, setMonitor1Files] = useState<string[]>([])
   const [monitor2Files, setMonitor2Files] = useState<string[]>([])
+  
+  // Output window states
+  const [monitor1OutputEnabled, setMonitor1OutputEnabled] = useState(false)
+  const [monitor2OutputEnabled, setMonitor2OutputEnabled] = useState(false)
 
   // Video refs for video.js players
   const monitor1VideoRef = useRef<HTMLVideoElement>(null)
@@ -503,6 +729,90 @@ function PreviewSection({ config, saveConfig }: { config: AppConfig, saveConfig:
       loadMediaFiles(config.monitor2.media_folder, setMonitor2Files)
     }
   }, [config.monitor1.media_folder, config.monitor2.media_folder])
+  
+  // Handle Monitor 1 output window
+  useEffect(() => {
+    if (!config) return
+    
+    const handleOutputWindow = async () => {
+      console.log('Monitor 1 output effect triggered:', {
+        preview: config.preview,
+        outputEnabled: monitor1OutputEnabled,
+        monitorEnabled: config.monitor1.enabled,
+        displayIndex: config.monitor1.display_index,
+        resolution: config.monitor1.resolution
+      })
+      
+      if (config.preview === 'Test' && monitor1OutputEnabled && config.monitor1.enabled) {
+        console.log('Opening Monitor 1 output window...')
+        try {
+          const result = await invoke('open_output_window', {
+            monitorId: 'monitor1',
+            displayIndex: config.monitor1.display_index,
+            width: config.monitor1.resolution.width,
+            height: config.monitor1.resolution.height
+          })
+          console.log('Monitor 1 output window opened successfully', result)
+        } catch (err) {
+          console.error('Failed to open output window for Monitor 1:', err)
+        }
+      } else {
+        console.log('Closing Monitor 1 output window (if exists)')
+        try {
+          await invoke('close_output_window', { monitorId: 'monitor1' })
+        } catch (err) {
+          // Window might not exist, ignore error
+        }
+      }
+    }
+    handleOutputWindow()
+  }, [config.preview, monitor1OutputEnabled, config.monitor1.enabled, config.monitor1.display_index, config.monitor1.resolution])
+  
+  // Handle Monitor 2 output window
+  useEffect(() => {
+    if (!config) return
+    
+    const handleOutputWindow = async () => {
+      console.log('Monitor 2 output effect triggered:', {
+        preview: config.preview,
+        outputEnabled: monitor2OutputEnabled,
+        monitorEnabled: config.monitor2.enabled,
+        displayIndex: config.monitor2.display_index,
+        resolution: config.monitor2.resolution
+      })
+      
+      if (config.preview === 'Test' && monitor2OutputEnabled && config.monitor2.enabled) {
+        console.log('Opening Monitor 2 output window...')
+        try {
+          await invoke('open_output_window', {
+            monitorId: 'monitor2',
+            displayIndex: config.monitor2.display_index,
+            width: config.monitor2.resolution.width,
+            height: config.monitor2.resolution.height
+          })
+          console.log('Monitor 2 output window opened successfully')
+        } catch (err) {
+          console.error('Failed to open output window for Monitor 2:', err)
+        }
+      } else {
+        console.log('Closing Monitor 2 output window (if exists)')
+        try {
+          await invoke('close_output_window', { monitorId: 'monitor2' })
+        } catch (err) {
+          // Window might not exist, ignore error
+        }
+      }
+    }
+    handleOutputWindow()
+  }, [config.preview, monitor2OutputEnabled, config.monitor2.enabled, config.monitor2.display_index, config.monitor2.resolution])
+  
+  // Cleanup output windows on unmount
+  useEffect(() => {
+    return () => {
+      invoke('close_output_window', { monitorId: 'monitor1' }).catch(() => {})
+      invoke('close_output_window', { monitorId: 'monitor2' }).catch(() => {})
+    }
+  }, [])
 
   const loadMediaFiles = async (folder: string, setter: (files: string[]) => void) => {
     try {
@@ -531,6 +841,38 @@ function PreviewSection({ config, saveConfig }: { config: AppConfig, saveConfig:
 
   const monitor1File = getMediaFileForDmx(monitor1Video, monitor1Files)
   const monitor2File = getMediaFileForDmx(monitor2Video, monitor2Files)
+  
+  // Update Monitor 1 output window when media or dimmer changes
+  useEffect(() => {
+    if (monitor1OutputEnabled && config.preview === 'Test' && config.monitor1.enabled) {
+      const mediaUrl = monitor1File && monitor1Video > 0
+        ? convertFileSrc(`${config.monitor1.media_folder}/${monitor1File}`)
+        : null
+      
+      console.log('Updating Monitor 1 output window:', { mediaUrl, dimmer: monitor1Dimmer })
+      
+      invoke('update_output_window', {
+        monitorId: 'monitor1',
+        mediaUrl,
+        dimmer: monitor1Dimmer
+      }).catch(err => console.error('Failed to update Monitor 1 output:', err))
+    }
+  }, [monitor1File, monitor1Video, monitor1Dimmer, monitor1OutputEnabled, config.preview, config.monitor1.enabled, config.monitor1.media_folder])
+  
+  // Update Monitor 2 output window when media or dimmer changes
+  useEffect(() => {
+    if (monitor2OutputEnabled && config.preview === 'Test' && config.monitor2.enabled) {
+      const mediaUrl = monitor2File && monitor2Video > 0
+        ? convertFileSrc(`${config.monitor2.media_folder}/${monitor2File}`)
+        : null
+      
+      invoke('update_output_window', {
+        monitorId: 'monitor2',
+        mediaUrl,
+        dimmer: monitor2Dimmer
+      }).catch(err => console.error('Failed to update Monitor 2 output:', err))
+    }
+  }, [monitor2File, monitor2Video, monitor2Dimmer, monitor2OutputEnabled, config.preview, config.monitor2.enabled, config.monitor2.media_folder])
 
   // Initialize and update Monitor 1 video player
   useEffect(() => {
@@ -622,7 +964,7 @@ function PreviewSection({ config, saveConfig }: { config: AppConfig, saveConfig:
       }
     } else {
       // Clear current source when not showing video
-      if (isVideo === false) {
+      if (!isVideo) {
         monitor1CurrentSrcRef.current = ''
       }
     }
@@ -729,7 +1071,7 @@ function PreviewSection({ config, saveConfig }: { config: AppConfig, saveConfig:
       }
     } else {
       // Clear current source when not showing video
-      if (isVideo === false) {
+      if (!isVideo) {
         monitor2CurrentSrcRef.current = ''
       }
     }
@@ -769,9 +1111,10 @@ function PreviewSection({ config, saveConfig }: { config: AppConfig, saveConfig:
 
         {config.preview === 'Test' && (
           <div className="test-controls">
-            <div className="monitor-controls">
-              <h4>Monitor 1 (Ch {config.monitor1.start_channel})</h4>
-              <div className="sliders-group">
+            {config.monitor1.enabled && (
+              <div className="monitor-controls">
+                <h4>Monitor 1 (Ch {config.monitor1.start_channel})</h4>
+                <div className="sliders-group">
                 <div className="vertical-slider-control">
                   <label>Video</label>
                   <input
@@ -875,10 +1218,12 @@ function PreviewSection({ config, saveConfig }: { config: AppConfig, saveConfig:
                 </div>
               </div>
             </div>
+            )}
 
-            <div className="monitor-controls">
-              <h4>Monitor 2 (Ch {config.monitor2.start_channel})</h4>
-              <div className="sliders-group">
+            {config.monitor2.enabled && (
+              <div className="monitor-controls">
+                <h4>Monitor 2 (Ch {config.monitor2.start_channel})</h4>
+                <div className="sliders-group">
                 <div className="vertical-slider-control">
                   <label>Video</label>
                   <input
@@ -982,6 +1327,7 @@ function PreviewSection({ config, saveConfig }: { config: AppConfig, saveConfig:
                 </div>
               </div>
             </div>
+            )}
           </div>
         )}
       </div>
@@ -989,83 +1335,107 @@ function PreviewSection({ config, saveConfig }: { config: AppConfig, saveConfig:
       <div className="card">
         <h3>Preview Output</h3>
         <div className={`preview-monitors ${config.layout.toLowerCase()}`}>
-          <div className="preview-monitor">
-            <div className={`preview-screen ${config.monitor1.orientation.toLowerCase()}`}>
-              {/* Video element always rendered for video.js stability */}
-              <video
-                ref={monitor1VideoRef}
-                className="video-js vjs-default-skin"
-                style={{ 
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  width: '100%', 
-                  height: '100%',
-                  visibility: (monitor1Video > 0 && monitor1File && monitor1File.match(/\.(mp4|mov|avi|mkv)$/i)) ? 'visible' : 'hidden',
-                  opacity: monitor1Dimmer / 255,
-                  zIndex: (monitor1Video > 0 && monitor1File && monitor1File.match(/\.(mp4|mov|avi|mkv)$/i)) ? 10 : 0
-                }}
-              />
-              
-              {/* Image container */}
-              {monitor1Video > 0 && monitor1File && monitor1File.match(/\.(jpg|jpeg|png|gif|bmp)$/i) && (
-                <div className="preview-content" style={{ opacity: monitor1Dimmer / 255, zIndex: 20 }}>
-                  <img
-                    key={monitor1File}
-                    src={convertFileSrc(`${config.monitor1.media_folder}/${monitor1File}`)}
-                    alt={monitor1File}
-                    onLoad={() => console.log('Image loaded:', monitor1File)}
-                    onError={(e) => console.error('Image failed to load:', monitor1File, e)}
-                  />
-                </div>
-              )}
+          {config.monitor1.enabled && (
+            <div className="preview-monitor">
+              <div className={`preview-screen ${config.monitor1.orientation.toLowerCase()}`}>
+                {/* Video element always rendered for video.js stability */}
+                <video
+                  ref={monitor1VideoRef}
+                  className="video-js vjs-default-skin"
+                  style={{ 
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: '100%', 
+                    height: '100%',
+                    visibility: (monitor1Video > 0 && monitor1File && monitor1File.match(/\.(mp4|mov|avi|mkv)$/i)) ? 'visible' : 'hidden',
+                    opacity: monitor1Dimmer / 255,
+                    zIndex: (monitor1Video > 0 && monitor1File && monitor1File.match(/\.(mp4|mov|avi|mkv)$/i)) ? 10 : 0
+                  }}
+                />
+                
+                {/* Image container */}
+                {monitor1Video > 0 && monitor1File && monitor1File.match(/\.(jpg|jpeg|png|gif|bmp)$/i) && (
+                  <div className="preview-content" style={{ opacity: monitor1Dimmer / 255, zIndex: 20 }}>
+                    <img
+                      key={monitor1File}
+                      src={convertFileSrc(`${config.monitor1.media_folder}/${monitor1File}`)}
+                      alt={monitor1File}
+                      onLoad={() => console.log('Image loaded:', monitor1File)}
+                      onError={(e) => console.error('Image failed to load:', monitor1File, e)}
+                    />
+                  </div>
+                )}
+              </div>
+              <div className="preview-label">
+                <strong>Monitor 1</strong>
+                <span className="preview-filename">
+                  {monitor1Video > 0 && monitor1File ? monitor1File : 'No media'}
+                </span>
+                {config.preview === 'Test' && (
+                  <label className="output-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={monitor1OutputEnabled}
+                      onChange={(e) => setMonitor1OutputEnabled(e.target.checked)}
+                    />
+                    Output to Display
+                  </label>
+                )}
+              </div>
             </div>
-            <div className="preview-label">
-              <strong>Monitor 1</strong>
-              <span className="preview-filename">
-                {monitor1Video > 0 && monitor1File ? monitor1File : 'No media'}
-              </span>
-            </div>
-          </div>
+          )}
 
-          <div className="preview-monitor">
-            <div className={`preview-screen ${config.monitor2.orientation.toLowerCase()}`}>
-              {/* Video element always rendered for video.js stability */}
-              <video
-                ref={monitor2VideoRef}
-                className="video-js vjs-default-skin"
-                style={{ 
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  width: '100%', 
-                  height: '100%',
-                  visibility: (monitor2Video > 0 && monitor2File && monitor2File.match(/\.(mp4|mov|avi|mkv)$/i)) ? 'visible' : 'hidden',
-                  opacity: monitor2Dimmer / 255,
-                  zIndex: (monitor2Video > 0 && monitor2File && monitor2File.match(/\.(mp4|mov|avi|mkv)$/i)) ? 10 : 0
-                }}
-              />
-              
-              {/* Image container */}
-              {monitor2Video > 0 && monitor2File && monitor2File.match(/\.(jpg|jpeg|png|gif|bmp)$/i) && (
-                <div className="preview-content" style={{ opacity: monitor2Dimmer / 255, zIndex: 20 }}>
-                  <img
-                    key={monitor2File}
-                    src={convertFileSrc(`${config.monitor2.media_folder}/${monitor2File}`)}
-                    alt={monitor2File}
-                    onLoad={() => console.log('Image loaded:', monitor2File)}
-                    onError={(e) => console.error('Image failed to load:', monitor2File, e)}
-                  />
-                </div>
-              )}
+          {config.monitor2.enabled && (
+            <div className="preview-monitor">
+              <div className={`preview-screen ${config.monitor2.orientation.toLowerCase()}`}>
+                {/* Video element always rendered for video.js stability */}
+                <video
+                  ref={monitor2VideoRef}
+                  className="video-js vjs-default-skin"
+                  style={{ 
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: '100%', 
+                    height: '100%',
+                    visibility: (monitor2Video > 0 && monitor2File && monitor2File.match(/\.(mp4|mov|avi|mkv)$/i)) ? 'visible' : 'hidden',
+                    opacity: monitor2Dimmer / 255,
+                    zIndex: (monitor2Video > 0 && monitor2File && monitor2File.match(/\.(mp4|mov|avi|mkv)$/i)) ? 10 : 0
+                  }}
+                />
+                
+                {/* Image container */}
+                {monitor2Video > 0 && monitor2File && monitor2File.match(/\.(jpg|jpeg|png|gif|bmp)$/i) && (
+                  <div className="preview-content" style={{ opacity: monitor2Dimmer / 255, zIndex: 20 }}>
+                    <img
+                      key={monitor2File}
+                      src={convertFileSrc(`${config.monitor2.media_folder}/${monitor2File}`)}
+                      alt={monitor2File}
+                      onLoad={() => console.log('Image loaded:', monitor2File)}
+                      onError={(e) => console.error('Image failed to load:', monitor2File, e)}
+                    />
+                  </div>
+                )}
+              </div>
+              <div className="preview-label">
+                <strong>Monitor 2</strong>
+                <span className="preview-filename">
+                  {monitor2Video > 0 && monitor2File ? monitor2File : 'No media'}
+                </span>
+                {config.preview === 'Test' && (
+                  <label className="output-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={monitor2OutputEnabled}
+                      onChange={(e) => setMonitor2OutputEnabled(e.target.checked)}
+                    />
+                    Output to Display
+                  </label>
+                )}
+              </div>
             </div>
-            <div className="preview-label">
-              <strong>Monitor 2</strong>
-              <span className="preview-filename">
-                {monitor2Video > 0 && monitor2File ? monitor2File : 'No media'}
-              </span>
-            </div>
-          </div>
+          )}
         </div>
       </div>
     </div>

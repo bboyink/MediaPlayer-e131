@@ -1,8 +1,8 @@
 // TypeScript types matching Rust config.rs structures
 
 export type Resolution = 
-  | { type: 'HD' }
-  | { type: 'FourK' }
+  | { type: 'HD', width: number, height: number }
+  | { type: 'FourK', width: number, height: number }
   | { type: 'Custom', width: number, height: number };
 
 export type Orientation = 'Horizontal' | 'Vertical';
@@ -23,6 +23,15 @@ export interface MonitorConfig {
   media_folder: string;
   resolution: Resolution;
   orientation: Orientation;
+  display_index: number;
+}
+
+export interface DisplayInfo {
+  index: number;
+  name: string;
+  is_primary: boolean;
+  width: number;
+  height: number;
 }
 
 export type LayoutMode = 
