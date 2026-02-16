@@ -4,10 +4,14 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
-    "preview": "vite preview",
-    "tauri": "tauri"
+    "dev": "npx vite",
+    "build": "tsc && npx vite build",
+    "preview": "npx vite preview",
+    "tauri": "cargo tauri",
+    "tauri:dev": "cargo tauri dev",
+    "tauri:build": "cargo tauri build",
+    "tauri:build:msi": "cargo tauri build --bundles msi",
+    "tauri:build:nsis": "cargo tauri build --bundles nsis"
   },
   "dependencies": {
     "@tauri-apps/api": ">=2.0.0",

@@ -2,6 +2,8 @@
 
 sACN (E1.31) driven dual-monitor video playback system built with Tauri 2, React, and Rust.
 
+**Platform**: Windows 10/11 (64-bit)
+
 ## Features
 
 - **Dual Monitor Support**: Independent control of two monitor outputs
@@ -59,26 +61,38 @@ MediaPlayer/
 
 - [Rust](https://www.rust-lang.org/tools/install) (stable channel)
 - [Node.js](https://nodejs.org/) 20 LTS or later
-- [Tauri Prerequisites](https://v2.tauri.app/start/prerequisites/) for your platform
+- [Microsoft Visual C++ Build Tools](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022)
+- [WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) (typically pre-installed on Windows 10/11)
 
 ### Installation
 
-```bash
+```powershell
 # Install Node dependencies
 npm install
 
 # Run in development mode
-npm run tauri dev
+npm run tauri:dev
 ```
 
 ### Building for Production
 
-```bash
-# Build the application
-npm run tauri build
+```powershell
+# Build both MSI and NSIS installers
+npm run tauri:build
+
+# Build MSI installer only (recommended for enterprise)
+npm run tauri:build:msi
+
+# Build NSIS installer only (smaller download, more flexible)
+npm run tauri:build:nsis
 ```
 
-This creates platform-specific installers in `src-tauri/target/release/bundle/`.
+Installers will be created in:
+- MSI: `src-tauri/target/release/bundle/msi/`
+- NSIS: `src-tauri/target/release/bundle/nsis/`
+
+**MSI** is recommended for enterprise deployments and supports Windows Installer features.
+**NSIS** creates a smaller installer with more customization options.
 
 ## Configuration
 
@@ -159,9 +173,11 @@ Dimmer channel: 0 = fully transparent, 255 = fully opaque
 
 ### Window Output Issues
 
-- Verify correct monitor is selected
-- On Windows, ensure display settings are configured correctly
+- Verify correct monitor is selected in Windows Display Settings
+- Ensure monitors are set to "Extend these displays" mode
+- Check that display scaling is set appropriately (recommended: 100%)
 - Try toggling between preview and production mode
+- If output window doesn't appear, check Windows taskbar settings
 
 ## Development Roadmap
 

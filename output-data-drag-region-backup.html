@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Output Window</title>
+  <link rel="stylesheet" href="/node_modules/video.js/dist/video-js.min.css">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #000;
+      user-select: none;
+    }
+    
+    #drag-region {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1000;
+      background: transparent;
+      cursor: move;
+    }
+    
+    #output-container {
+      width: 100%;
+      height: 100%;
+      position: absolute;
+      top: 0;
+      left: 0;
+      background: #000;
+      z-index: 1;
+    }
+    
+    #output-video {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: none;
+      pointer-events: none;
+    }
+    
+    #output-video.vjs-fluid,
+    #output-video.vjs-16-9,
+    #output-video.vjs-4-3 {
+      padding-top: 0 !important;
+    }
+    
+    #output-image {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: none;
+      pointer-events: none;
+    }
+    
+    .video-js {
+      width: 100% !important;
+      height: 100% !important;
+    }
+    
+    .vjs-tech {
+      object-fit: contain;
+    }
+  </style>
+</head>
+<body>
+  <div id="drag-region" data-tauri-drag-region></div>
+  <div id="output-container">
+    <video id="output-video" class="video-js vjs-default-skin"></video>
+    <img id="output-image" alt="Output">
+  </div>
+  
+  <script src="/node_modules/video.js/dist/video.min.js"></script>
+  <script>
+    // Debug logging
+    console.log('Output window loaded with drag region');
+    
+    let player = null;
+    let currentMediaUrl = null;
+    let currentDimmer = 255;
+    
+    const videoElement = document.getElementById('output-video');
+    const imageElement = document.getElementById('output-image');
+    const container = document.getElementById('output-container');
+    const dragRegion = document.getElementById('drag-region');
+    
+    console.log('Elements:', { videoElement, imageElement, container, dragRegion });
+    
+    // Initialize video.js player
+    function initPlayer() {
+      if (!player && videoElement) {
+        console.log('Initializing video.js player');
+        player = videojs(videoElement, {
+          controls: false,
+          autoplay: true,
+          loop: false,
+          muted: false, // Allow audio in output
+          preload: 'auto',
+          fluid: false,
+          fill: true,
+          html5: {
+            vhs: {
+              overrideNative: true
+            },
+            nativeVideoTracks: false,
+            nativeAudioTracks: false,
+            nativeTextTracks: false
+          }
+        });
+        
+        console.log('Player initialized');
+        
+        // Handle video end for looping
+        player.on('ended', () => {
+          console.log('Video ended, restarting');
+          player.currentTime(0);
+          player.play().catch(e => console.error('Restart play failed:', e));
+        });
+      }
+      return player;
+    }
+    
+    function updateMedia(mediaUrl, dimmer) {
+      console.log('updateMedia called:', { mediaUrl, dimmer });
+      
+      currentMediaUrl = mediaUrl;
+      currentDimmer = dimmer;
+      
+      // If no media, show black screen
+      if (!mediaUrl) {
+        console.log('No media, showing black screen');
+        videoElement.style.display = 'none';
+        imageElement.style.display = 'none';
+        if (player && !player.paused()) {
+          player.pause();
+        }
+        return;
+      }
+      
+      const isVideo = mediaUrl.match(/\.(mp4|mov|avi|mkv)$/i);
+      const opacity = dimmer / 255;
+      
+      console.log('Media type:', isVideo ? 'video' : 'image', 'opacity:', opacity);
+      
+      if (isVideo) {
+        // Show video
+        imageElement.style.display = 'none';
+        videoElement.style.display = 'block';
+        videoElement.style.opacity = opacity;
+        
+        initPlayer();
+        if (player) {
+          console.log('Loading video:', mediaUrl);
+          player.src({
+            type: 'video/mp4',
+            src: mediaUrl
+          });
+          player.load();
+          player.ready(() => {
+            console.log('Player ready, starting play');
+            player.play().catch(e => console.error('Play failed:', e));
+          });
+        }
+      } else {
+        // Show image
+        console.log('Loading image:', mediaUrl);
+        if (player && !player.paused()) {
+          player.pause();
+        }
+        videoElement.style.display = 'none';
+        imageElement.src = mediaUrl;
+        imageElement.style.display = 'block';
+        imageElement.style.opacity = opacity;
+      }
+    }
+    
+    // Expose updateMedia globally so Rust can call it directly
+    window.updateMedia = updateMedia;
+    console.log('updateMedia function exposed globally');
+    
+    // Initial black screen
+    console.log('Setting initial black screen');
+    updateMedia(null, 255);
+  </script>
+</body>
+</html>

@@ -1,0 +1,18 @@
+# Windows-specific build configuration
+
+[build]
+target-dir = "C:/Temp/mediaplayer-build"  # Build outside project to avoid file locks
+target = "x86_64-pc-windows-msvc"
+
+[target.x86_64-pc-windows-msvc]
+rustflags = [
+    "-C", "target-feature=+crt-static",  # Statically link C runtime
+    "-C", "link-arg=/SUBSYSTEM:WINDOWS", # Windows GUI subsystem (no console)
+]
+
+[profile.release]
+strip = true           # Strip symbols from binary
+lto = true            # Link-time optimization
+codegen-units = 1     # Better optimization, slower build
+opt-level = "z"       # Optimize for size
+panic = "abort"       # Smaller binaries

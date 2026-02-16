@@ -173,8 +173,8 @@ async fn open_output_window(
     display_index: usize,
     width: u32,
     height: u32,
-    _window_x: Option<i32>,
-    _window_y: Option<i32>,
+    window_x: Option<i32>,
+    window_y: Option<i32>,
 ) -> Result<(), String> {
     use tauri::Manager;
     use tauri::webview::WebviewWindowBuilder;
@@ -189,41 +189,29 @@ async fn open_output_window(
     // Get available monitors
     let monitors = app_handle.available_monitors().map_err(|e| e.to_string())?;
     
-    // Debug: print all available monitors
-    println!("Available monitors:");
-    for (i, mon) in monitors.iter().enumerate() {
-        println!("  Monitor {}: position=({}, {}), size={}x{}", 
-            i, mon.position().x, mon.position().y, mon.size().width, mon.size().height);
-    }
-    
-    // Validate display_index is within bounds
-    let actual_display_index = if display_index >= monitors.len() {
-        println!("Display index {} out of bounds (have {} monitors), using primary monitor (0)", display_index, monitors.len());
-        0
-    } else {
-        display_index
-    };
-    
     // Get the target monitor for positioning
-    let monitor = monitors.get(actual_display_index)
-        .ok_or_else(|| format!("Display index {} not found", actual_display_index))?;
+    let monitor = monitors.get(display_index)
+        .ok_or_else(|| format!("Display index {} not found", display_index))?;
     
     let position = monitor.position();
     let size = monitor.size();
     
-    // Position window at exact top-left of the monitor
-    // Offset by -10 to compensate for Windows positioning quirk
-    let pos_x = position.x - 10;
-    let pos_y = position.y - 10;
+    // Use saved position if available, otherwise position at monitor's upper-left
+    // For video output, position at monitor coordinates (may be above macOS menu bar)
+    let monitor_offset_x = position.x;
+    let monitor_offset_y = position.y;
+    
+    let pos_x = window_x.unwrap_or(monitor_offset_x);
+    let pos_y = window_y.unwrap_or(monitor_offset_y);
     
     println!("Monitor {} info: position=({}, {}), size={}x{}", 
-        actual_display_index, position.x, position.y, size.width, size.height);
-    println!("Window position: using=({}, {})",
-         pos_x, pos_y);
-    println!("Opening output window '{}' on display {} at position ({}, {}) with resolution {}x{}", 
-        window_label, actual_display_index, pos_x, pos_y, width, height);
+        display_index, position.x, position.y, size.width, size.height);
+    println!("Window position calculation: saved_x={:?}, saved_y={:?}, using_x={}, using_y={}",
+        window_x, window_y, pos_x, pos_y);
+    println!("Opening output window '{}' at position ({}, {}) with resolution {}x{}", 
+        window_label, pos_x, pos_y, width, height);
     
-    // Build and create the window - borderless, positioned at exact monitor top-left
+    // Build and create the window - borderless, always on top, above menu bar
     let window = WebviewWindowBuilder::new(
         &app_handle,
         &window_label,
@@ -234,55 +222,37 @@ async fn open_output_window(
     .position(pos_x as f64, pos_y as f64)
     .resizable(false)
     .decorations(false)
-    .visible(false)
+    .visible(true)
+    .focused(false)
     .always_on_top(true)
     .skip_taskbar(true)
+
+    .build()
+    .map_err(|e| format!("Failed to build window: {}", e))?;
+    
+    // Set window to appear above macOS menu bar using NSWindow levels
+    #[cfg(target_os = "macos")]
+    {
+        use tauri::WebviewWindow;
+        
+        // For macOS, we need to set a higher window level to appear above menu bar
+        window.set_always_on_top(true).map_err(|e| e.to_string())?;
+        
+        // Additional macOS-specific window level setting would go here
+        // This ensures the window appears above the menu bar
+        println!("Set macOS window level for above-menu-bar display");
+    }
     .build()
     .map_err(|e| format!("Failed to build window: {}", e))?;
     
     println!("Output window '{}' created successfully", window_label);
     
-    // Set exact position again after creation to ensure correctness
-    window.set_position(tauri::Position::Physical(tauri::PhysicalPosition { 
-        x: pos_x, 
-        y: pos_y 
-    })).map_err(|e| format!("Failed to set position: {}", e))?;
-    
-    // Force window to front
+    // Ensure window is visible
     window.show().map_err(|e| format!("Failed to show window: {}", e))?;
-    window.set_focus().map_err(|e| format!("Failed to focus window: {}", e))?;
     
     println!("Output window '{}' shown and focused", window_label);
     
     Ok(())
-}
-
-#[tauri::command]
-async fn move_output_window(
-    app_handle: tauri::AppHandle,
-    monitor_id: String,
-    delta_x: i32,
-    delta_y: i32,
-) -> Result<(), String> {
-    use tauri::Manager;
-    
-    let window_label = format!("output-{}", monitor_id);
-    
-    if let Some(window) = app_handle.get_webview_window(&window_label) {
-        let current_pos = window.outer_position().map_err(|e| e.to_string())?;
-        let new_x = current_pos.x + delta_x;
-        let new_y = current_pos.y + delta_y;
-        
-        window.set_position(tauri::Position::Physical(tauri::PhysicalPosition { 
-            x: new_x, 
-            y: new_y 
-        })).map_err(|e| format!("Failed to move window: {}", e))?;
-        
-        println!("Moved window '{}' to ({}, {})", window_label, new_x, new_y);
-        Ok(())
-    } else {
-        Err(format!("Window '{}' not found", window_label))
-    }
 }
 
 #[tauri::command]
@@ -345,6 +315,42 @@ async fn update_output_window(
     Ok(())
 }
 
+#[tauri::command]
+async fn save_output_window_position(
+    app_handle: tauri::AppHandle,
+    state: State<'_, AppState>,
+    monitor_id: String,
+) -> Result<(), String> {
+    use tauri::Manager;
+    
+    let window_label = format!("output-{}", monitor_id);
+    
+    if let Some(window) = app_handle.get_webview_window(&window_label) {
+        let position = window.outer_position().map_err(|e| e.to_string())?;
+        
+        println!("Saving position for '{}': ({}, {})", window_label, position.x, position.y);
+        
+        // Update config with new position
+        let mut config = state.config.lock().unwrap();
+        if monitor_id == "monitor1" {
+            config.monitor1.window_x = Some(position.x);
+            config.monitor1.window_y = Some(position.y);
+        } else if monitor_id == "monitor2" {
+            config.monitor2.window_x = Some(position.x);
+            config.monitor2.window_y = Some(position.y);
+        }
+        
+        // Save to disk
+        config.save()?;
+        
+        Ok(())
+    } else {
+        Err(format!("Window '{}' not found", window_label))
+    }
+}
+
+// snap_output_window_to_corner function removed - windows are now fully draggable
+
 fn main() {
     // Load configuration from file or create default
     let config = AppConfig::load().unwrap_or_else(|e| {
@@ -371,7 +377,7 @@ fn main() {
             open_output_window,
             close_output_window,
             update_output_window,
-            move_output_window
+            save_output_window_position
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -690,6 +690,7 @@ function PreviewSection({ config, saveConfig }: { config: AppConfig, saveConfig:
   // Output window states
   const [monitor1OutputEnabled, setMonitor1OutputEnabled] = useState(false)
   const [monitor2OutputEnabled, setMonitor2OutputEnabled] = useState(false)
+  const [activeMonitor, setActiveMonitor] = useState<'monitor1' | 'monitor2' | null>(null)
 
   // Video refs for video.js players
   const monitor1VideoRef = useRef<HTMLVideoElement>(null)
@@ -721,6 +722,49 @@ function PreviewSection({ config, saveConfig }: { config: AppConfig, saveConfig:
     }
   }, [])
 
+  // Keyboard navigation for output window positioning
+  useEffect(() => {
+    const handleKeyDown = async (e: KeyboardEvent) => {
+      if (!activeMonitor || !['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+        return
+      }
+      
+      e.preventDefault()
+      const step = e.shiftKey ? 10 : 1
+      
+      let deltaX = 0
+      let deltaY = 0
+      
+      switch(e.key) {
+        case 'ArrowUp':
+          deltaY = -step
+          break
+        case 'ArrowDown':
+          deltaY = step
+          break
+        case 'ArrowLeft':
+          deltaX = -step
+          break
+        case 'ArrowRight':
+          deltaX = step
+          break
+      }
+      
+      try {
+        await invoke('move_output_window', {
+          monitorId: activeMonitor,
+          deltaX,
+          deltaY
+        })
+      } catch (err) {
+        console.error('Failed to move output window:', err)
+      }
+    }
+    
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [activeMonitor])
+
   useEffect(() => {
     if (config.monitor1.media_folder) {
       loadMediaFiles(config.monitor1.media_folder, setMonitor1Files)
@@ -746,11 +790,16 @@ function PreviewSection({ config, saveConfig }: { config: AppConfig, saveConfig:
       if (config.preview === 'Test' && monitor1OutputEnabled && config.monitor1.enabled) {
         console.log('Opening Monitor 1 output window...')
         try {
+          // Always close existing window first to handle monitor changes
+          await invoke('close_output_window', { monitorId: 'monitor1' }).catch(() => {})
+          
           const result = await invoke('open_output_window', {
             monitorId: 'monitor1',
             displayIndex: config.monitor1.display_index,
             width: config.monitor1.resolution.width,
-            height: config.monitor1.resolution.height
+            height: config.monitor1.resolution.height,
+            windowX: config.monitor1.window_x,
+            windowY: config.monitor1.window_y
           })
           console.log('Monitor 1 output window opened successfully', result)
         } catch (err) {
@@ -760,8 +809,9 @@ function PreviewSection({ config, saveConfig }: { config: AppConfig, saveConfig:
         console.log('Closing Monitor 1 output window (if exists)')
         try {
           await invoke('close_output_window', { monitorId: 'monitor1' })
+          console.log('Monitor 1 output window closed successfully')
         } catch (err) {
-          // Window might not exist, ignore error
+          console.error('Failed to close Monitor 1 output window:', err)
         }
       }
     }
@@ -784,11 +834,16 @@ function PreviewSection({ config, saveConfig }: { config: AppConfig, saveConfig:
       if (config.preview === 'Test' && monitor2OutputEnabled && config.monitor2.enabled) {
         console.log('Opening Monitor 2 output window...')
         try {
+          // Always close existing window first to handle monitor changes
+          await invoke('close_output_window', { monitorId: 'monitor2' }).catch(() => {})
+          
           await invoke('open_output_window', {
             monitorId: 'monitor2',
             displayIndex: config.monitor2.display_index,
             width: config.monitor2.resolution.width,
-            height: config.monitor2.resolution.height
+            height: config.monitor2.resolution.height,
+            windowX: config.monitor2.window_x,
+            windowY: config.monitor2.window_y
           })
           console.log('Monitor 2 output window opened successfully')
         } catch (err) {
@@ -798,8 +853,9 @@ function PreviewSection({ config, saveConfig }: { config: AppConfig, saveConfig:
         console.log('Closing Monitor 2 output window (if exists)')
         try {
           await invoke('close_output_window', { monitorId: 'monitor2' })
+          console.log('Monitor 2 output window closed successfully')
         } catch (err) {
-          // Window might not exist, ignore error
+          console.error('Failed to close Monitor 2 output window:', err)
         }
       }
     }
@@ -1336,7 +1392,12 @@ function PreviewSection({ config, saveConfig }: { config: AppConfig, saveConfig:
         <h3>Preview Output</h3>
         <div className={`preview-monitors ${config.layout.toLowerCase()}`}>
           {config.monitor1.enabled && (
-            <div className="preview-monitor">
+            <div 
+              className={`preview-monitor ${activeMonitor === 'monitor1' ? 'active-for-keyboard' : ''}`}
+              onClick={() => setActiveMonitor('monitor1')}
+              tabIndex={0}
+              style={{ cursor: 'pointer', outline: activeMonitor === 'monitor1' ? '3px solid #0066ff' : 'none' }}
+            >
               <div className={`preview-screen ${config.monitor1.orientation.toLowerCase()}`}>
                 {/* Video element always rendered for video.js stability */}
                 <video
@@ -1369,25 +1430,44 @@ function PreviewSection({ config, saveConfig }: { config: AppConfig, saveConfig:
               </div>
               <div className="preview-label">
                 <strong>Monitor 1</strong>
+                {activeMonitor === 'monitor1' && (
+                  <span style={{ color: '#0066ff', fontSize: '11px', marginLeft: '8px' }}>
+                    ← Use arrow keys to move
+                  </span>
+                )}
                 <span className="preview-filename">
                   {monitor1Video > 0 && monitor1File ? monitor1File : 'No media'}
                 </span>
                 {config.preview === 'Test' && (
-                  <label className="output-checkbox">
-                    <input
-                      type="checkbox"
-                      checked={monitor1OutputEnabled}
-                      onChange={(e) => setMonitor1OutputEnabled(e.target.checked)}
-                    />
-                    Output to Display
-                  </label>
+                  <>
+                    <label className="output-checkbox">
+                      <input
+                        type="checkbox"
+                        checked={monitor1OutputEnabled}
+                        onChange={(e) => setMonitor1OutputEnabled(e.target.checked)}
+                      />
+                      Output to Display
+                    </label>
+                    {monitor1OutputEnabled && (
+                      <div className="output-controls">
+                        <span style={{ fontSize: '12px', color: '#4ade80' }}>
+                          ✓ Output window active (dragging not supported in dev mode)
+                        </span>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             </div>
           )}
 
           {config.monitor2.enabled && (
-            <div className="preview-monitor">
+            <div 
+              className={`preview-monitor ${activeMonitor === 'monitor2' ? 'active-for-keyboard' : ''}`}
+              onClick={() => setActiveMonitor('monitor2')}
+              tabIndex={0}
+              style={{ cursor: 'pointer', outline: activeMonitor === 'monitor2' ? '3px solid #0066ff' : 'none' }}
+            >
               <div className={`preview-screen ${config.monitor2.orientation.toLowerCase()}`}>
                 {/* Video element always rendered for video.js stability */}
                 <video
@@ -1420,18 +1500,32 @@ function PreviewSection({ config, saveConfig }: { config: AppConfig, saveConfig:
               </div>
               <div className="preview-label">
                 <strong>Monitor 2</strong>
+                {activeMonitor === 'monitor2' && (
+                  <span style={{ color: '#0066ff', fontSize: '11px', marginLeft: '8px' }}>
+                    ← Use arrow keys to move
+                  </span>
+                )}
                 <span className="preview-filename">
                   {monitor2Video > 0 && monitor2File ? monitor2File : 'No media'}
                 </span>
                 {config.preview === 'Test' && (
-                  <label className="output-checkbox">
-                    <input
-                      type="checkbox"
-                      checked={monitor2OutputEnabled}
-                      onChange={(e) => setMonitor2OutputEnabled(e.target.checked)}
-                    />
-                    Output to Display
-                  </label>
+                  <>
+                    <label className="output-checkbox">
+                      <input
+                        type="checkbox"
+                        checked={monitor2OutputEnabled}
+                        onChange={(e) => setMonitor2OutputEnabled(e.target.checked)}
+                      />
+                      Output to Display
+                    </label>
+                    {monitor2OutputEnabled && (
+                      <div className="output-controls">
+                        <span style={{ fontSize: '12px', color: '#4ade80' }}>
+                          ✓ Output window active (dragging not supported in dev mode)
+                        </span>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             </div>

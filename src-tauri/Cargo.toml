@@ -20,6 +20,9 @@ log = "0.4"
 env_logger = "0.11"
 get_if_addrs = "0.5"
 
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58", features = ["Win32_Foundation", "Win32_System_Threading", "Win32_UI_WindowsAndMessaging"] }
+
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
@@ -30,3 +33,11 @@ codegen-units = 1
 lto = true
 opt-level = "s"
 strip = true
+
+# Windows-specific optimizations
+[profile.release.package."*"]
+opt-level = 3
+
+# Optimize for Windows target
+[target.'cfg(windows)'.profile.release]
+opt-level = 3

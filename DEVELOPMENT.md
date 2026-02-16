@@ -1,10 +1,28 @@
 # Development Setup Guide
 
+**Target Platform**: Windows 10/11 (64-bit)
+
+## Prerequisites
+
+Before starting development, ensure you have:
+
+1. **Visual Studio Build Tools 2022** or later with C++ desktop development workload
+2. **Rust** (latest stable) - [rustup-init.exe](https://rustup.rs/)
+3. **Node.js** 20 LTS or later
+4. **WebView2 Runtime** (pre-installed on Windows 10/11)
+
+Verify installations:
+```powershell
+rustc --version
+node --version
+npm --version
+```
+
 ## Quick Start
 
 ### 1. Install Dependencies
 
-```bash
+```powershell
 npm install
 ```
 
@@ -21,8 +39,8 @@ The Rust dependencies will be automatically downloaded when you first run the de
 
 ### 3. Run Development Server
 
-```bash
-npm run tauri dev
+```powershell
+npm run tauri:dev
 ```
 
 This starts:
@@ -63,16 +81,21 @@ The application will open with the control interface. In development mode:
 
 For development without a physical lighting console:
 
-### Option 1: Use a Software sACN Sender
+### Option 1: Use sACN View (Recommended for Windows)
 
-**macOS/Windows:**
-- [sACN View](https://www.sacnview.org/) - Free sACN sender/viewer
-- [ETC Nomad](https://www.etcconnect.com/Products/Consoles/Eos-Family/ETCnomad-ETCnomad-Puck.aspx) - Professional lighting control software
+**[sACN View](https://www.sacnview.org/)** - Free sACN sender/viewer
+- Download and install for Windows
+- Configure Universe 1
+- Use the transmit tab to send test DMX values
+- Monitor channel 1 for clip selection, channel 2 for dimmer
 
-**Online Tools:**
-- [sACN Sender Web Tools](https://github.com/Hundemeier/sacn) - Node.js based
+### Option 2: ETC Nomad
 
-### Option 2: Manual Testing Script
+**[ETC Nomad](https://www.etcconnect.com/Products/Consoles/Eos-Family/ETCnomad-ETCnomad-Puck.aspx)** - Professional lighting control
+- Full Eos console software for Windows
+- Requires USB key (Nomad Puck) or demo mode
+
+### Option 3: Node.js Test Script
 
 Create a quick test with sACN library:
 
@@ -135,29 +158,52 @@ Run with: `node test-sender.js`
 
 ## Building for Production
 
-### Create a Release Build
+### Create Release Builds
 
-```bash
-npm run tauri build
+```powershell
+# Build both MSI and NSIS installers
+npm run tauri:build
+
+# Or build specific installer types:
+npm run tauri:build:msi   # Windows Installer (MSI)
+npm run tauri:build:nsis  # Nullsoft Scriptable Install System
 ```
 
 This will:
-1. Build the React frontend for production
-2. Compile Rust backend with optimizations
-3. Create platform-specific installers
+1. Build the React frontend for production (optimized, minified)
+2. Compile Rust backend with maximum optimizations
+3. Create Windows installers
 
-Output locations:
-- **Windows**: `src-tauri/target/release/bundle/nsis/`
-- **macOS**: `src-tauri/target/release/bundle/dmg/`
+### Output Locations
+
+- **MSI Installer**: `src-tauri\target\release\bundle\msi\`
+- **NSIS Installer**: `src-tauri\target\release\bundle\nsis\`
+- **Executable**: `src-tauri\target\release\mediaplayer-e131.exe`
+
+### Installer Comparison
+
+| Feature | MSI | NSIS |
+|---------|-----|------|
+| Size | Larger | Smaller |
+| Enterprise Deployment | ✅ Better | ❌ Limited |
+| Group Policy Support | ✅ Yes | ❌ No |
+| Custom UI | ❌ Limited | ✅ Flexible |
+| Recommended For | Enterprise, IT departments | End users, quick distribution |
 
 ### Build Optimization Notes
 
-The `Cargo.toml` includes optimization settings:
+The project includes several Windows-specific optimizations:
+- Static C runtime linking (no external dependencies)
 - Link-time optimization (LTO)
-- Size optimization
+- Size optimization (`opt-level = "z"`)
 - Stripped symbols
+- Windows subsystem (no console window in release)
 
-These reduce the bundle size significantly but increase build time.
+These optimizations result in smaller binaries (~5-8 MB) but increase build time (5-10 minutes).
+
+### First Build Note
+
+The first build will take significantly longer (10-15 minutes) as Rust downloads and compiles all dependencies. Subsequent builds are much faster (2-5 minutes).
 
 ## Debugging
 
@@ -165,8 +211,8 @@ These reduce the bundle size significantly but increase build time.
 
 The backend uses `env_logger`. To see detailed logs:
 
-```bash
-RUST_LOG=debug npm run tauri dev
+```powershell
+$env:RUST_LOG="debug"; npm run tauri:dev
 ```
 
 Log levels: `error`, `warn`, `info`, `debug`, `trace`
@@ -174,8 +220,7 @@ Log levels: `error`, `warn`, `info`, `debug`, `trace`
 ### Frontend Console
 
 Open DevTools in the Tauri window:
-- **macOS**: `Cmd + Option + I`
-- **Windows/Linux**: `Ctrl + Shift + I`
+- **Windows**: `Ctrl + Shift + I` or `F12`
 
 ### Common Issues
 
@@ -192,9 +237,17 @@ Open DevTools in the Tauri window:
 - Check browser console for asset loading errors
 
 **Build Errors:**
-- Clear `node_modules` and reinstall: `rm -rf node_modules && npm install`
-- Clean Rust build: `cd src-tauri && cargo clean`
+- Clear `node_modules` and reinstall: `Remove-Item -Recurse -Force node_modules; npm install`
+- Clean Rust build: `cd src-tauri; cargo clean; cd ..`
 - Update Rust: `rustup update`
+- Ensure Visual Studio Build Tools are installed with C++ desktop development
+
+**Windows Firewall:**
+- Allow UDP port 5568 for sACN reception
+- Run PowerShell as Administrator:
+  ```powershell
+  New-NetFirewallRule -DisplayName "MediaPlayer sACN" -Direction Inbound -Protocol UDP -LocalPort 5568 -Action Allow
+  ```
 
 ## Next Steps
 

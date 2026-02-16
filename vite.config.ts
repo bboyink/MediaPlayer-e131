@@ -11,8 +11,8 @@ export default defineConfig({
     port: 1420,
     strictPort: true,
     watch: {
-      // Tell Vite to ignore watching `src-tauri`
-      ignored: ["**/src-tauri/**"],
+      // Tell Vite to ignore watching `src-tauri` and old node_modules
+      ignored: ["**/src-tauri/**", "**/node_modules.old/**"],
     },
   },
   

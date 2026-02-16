@@ -75,6 +75,8 @@ pub struct MonitorConfig {
     pub resolution: Resolution,
     pub orientation: Orientation,
     pub display_index: usize,
+    pub window_x: Option<i32>,
+    pub window_y: Option<i32>,
 }
 
 impl Default for MonitorConfig {
@@ -86,6 +88,8 @@ impl Default for MonitorConfig {
             resolution: Resolution::default(),
             orientation: Orientation::default(),
             display_index: 0,
+            window_x: None,
+            window_y: None,
         }
     }
 }

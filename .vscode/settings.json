@@ -3,6 +3,9 @@
         "gh": true,
         "git init": true,
         "mkdir": true,
-        "npm run tauri": true
+        "npm run tauri": true,
+        ".\\setup-dev.bat": true,
+        "npx tauri": true,
+        "npm install": true
     }
 }

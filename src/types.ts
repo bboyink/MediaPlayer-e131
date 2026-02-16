@@ -24,6 +24,8 @@ export interface MonitorConfig {
   resolution: Resolution;
   orientation: Orientation;
   display_index: number;
+  window_x: number | null;
+  window_y: number | null;
 }
 
 export interface DisplayInfo {
