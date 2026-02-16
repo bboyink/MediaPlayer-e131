@@ -2,21 +2,72 @@
 \cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fswiss\fcharset0 Helvetica;}
 {\colortbl;\red255\green255\blue255;}
 {\*\expandedcolortbl;;}
-\margl1440\margr1440\vieww15380\viewh10520\viewkind0
+{\*\listtable{\list\listtemplateid1\listhybrid{\listlevel\levelnfc23\levelnfcn23\leveljc0\leveljcn0\levelfollow0\levelstartat1\levelspace360\levelindent0{\*\levelmarker \{disc\}}{\leveltext\leveltemplateid1\'01\uc0\u8226 ;}{\levelnumbers;}\fi-360\li720\lin720 }{\listname ;}\listid1}
+{\list\listtemplateid2\listhybrid{\listlevel\levelnfc23\levelnfcn23\leveljc0\leveljcn0\levelfollow0\levelstartat1\levelspace360\levelindent0{\*\levelmarker \{disc\}}{\leveltext\leveltemplateid101\'01\uc0\u8226 ;}{\levelnumbers;}\fi-360\li720\lin720 }{\listname ;}\listid2}
+{\list\listtemplateid3\listhybrid{\listlevel\levelnfc23\levelnfcn23\leveljc0\leveljcn0\levelfollow0\levelstartat1\levelspace360\levelindent0{\*\levelmarker \{disc\}}{\leveltext\leveltemplateid201\'01\uc0\u8226 ;}{\levelnumbers;}\fi-360\li720\lin720 }{\listname ;}\listid3}
+{\list\listtemplateid4\listhybrid{\listlevel\levelnfc23\levelnfcn23\leveljc0\leveljcn0\levelfollow0\levelstartat1\levelspace360\levelindent0{\*\levelmarker \{disc\}}{\leveltext\leveltemplateid301\'01\uc0\u8226 ;}{\levelnumbers;}\fi-360\li720\lin720 }{\listname ;}\listid4}}
+{\*\listoverridetable{\listoverride\listid1\listoverridecount0\ls1}{\listoverride\listid2\listoverridecount0\ls2}{\listoverride\listid3\listoverridecount0\ls3}{\listoverride\listid4\listoverridecount0\ls4}}
+\margl1440\margr1440\vieww15380\viewh19680\viewkind0
 \pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0
 
 \f0\fs24 \cf0 Looking to build a video playback system that is triggered via sACN. The system will need to support dual monitors for output. One set of DMX channels will be for Monitor 1 and another for Monitor 2.\
 \
-The software is going to need to be able to read sACN\
-Assign a start channel for monitor 1 and another for monitor 2\
-Each monitor will need a channel assigned to select a video or JPG, and a second channel for a dimmer control\
-Needs to be able to support MP4 playback, JPG, and PNG.\
-Part of the monitor configuration should be selecting an output resolution of HD, 4K, or a custom resolution for each monitor\
-I need the ability to set an orientation of horizontal or vertical for each monitor\
-I need the ability to view the video clips in a preview mode, with the ability to show two monitors side-by-side or stacked vertically\
-I need the ability to put it in production mode, which outputs the selected resolution and clips to the monitors\
-I will need to be able to browse to two different folders for media, one for monitor 2 and the other for monitor 2\
-Video clips or JPEG/PNG should be labeled as xxx.mp4 or xxx.jpg or xxx.png\
-The xxx in the file name should correspond to the DMX value. For example, a value of 1 on Chanel X would play 001.mp4\
+I need a modern UI that begins with a navigation panel on the left side. Things should be grouped into cards, and have a clean modern look.\
+\
+This navigation panel should include the following categories:\
+DMX\
+Configuration\
+Layout\
+Preview\
+\
+\
+DMX panel that includes:\
+\pard\tx220\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\li720\fi-720\pardirnatural\partightenfactor0
+\ls1\ilvl0\cf0 {\listtext	\uc0\u8226 	}sACN configuration that can set the incoming IP address\
+{\listtext	\uc0\u8226 	}Have a dropdown that allows you to pick a network card. It should show the IP on that card.\
+{\listtext	\uc0\u8226 	}The ability to specify whether it's receiving multicast or unicast\
+{\listtext	\uc0\u8226 	}If unicast, allow for them to configure the settings\
+{\listtext	\uc0\u8226 	}Needs to be able to set the universe\
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0
+\cf0 \
+Configuration:\
+\pard\tx220\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\li720\fi-720\pardirnatural\partightenfactor0
+\ls2\ilvl0\cf0 {\listtext	\uc0\u8226 	}Assign a start channel for monitor 1 and another for monitor 2\
+{\listtext	\uc0\u8226 	}Each monitor will need a channel assigned to select a video or JPG, and a second channel for a dimmer control\
+{\listtext	\uc0\u8226 	}Needs to be able to support MP4 playback, JPG, and PNG.\
+{\listtext	\uc0\u8226 	}Part of the monitor configuration should be selecting an output resolution of HD, 4K, or a custom resolution for each monitor\
+{\listtext	\uc0\u8226 	}Needs the ability to set a start channel for both monitor 1 and 2. \
+{\listtext	\uc0\u8226 	}Need to assign a media folder for monitors 1 and 2\
+{\listtext	\uc0\u8226 	}Need to be able to set the orientation of each monitor \
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0
+\cf0 \
+Lyout:\
+\
+\pard\tx220\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\li720\fi-720\pardirnatural\partightenfactor0
+\cf0 	\'95	I need the ability to set screen layouts as: horizontal side by side, horizontal stacked, vertical side by side, vertical stacked\
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0
+\cf0 \
+Preview:\
+\pard\tx220\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\li720\fi-720\pardirnatural\partightenfactor0
+\ls3\ilvl0\cf0 {\listtext	\uc0\u8226 	}Show a scaled-down version of the configuration setup in the layout panel. \
+{\listtext	\uc0\u8226 	}Have a slider that allows the user to change the DMX value from 0 to 255.\
+{\listtext	\uc0\u8226 	}Have two modes: listen and test\
+{\listtext	\uc0\u8226 	}If in listen mode, input is from sACN.\
+{\listtext	\uc0\u8226 	}If test, skip the sACN input and directly pull up the clip associated with that number\
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0
+\cf0 \
+Other information\
+\
+\pard\tx220\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\li720\fi-720\pardirnatural\partightenfactor0
+\ls4\ilvl0\cf0 {\listtext	\uc0\u8226 	}Supported video clips are MP4\
+{\listtext	\uc0\u8226 	}Supported image files are JPG and PNG\
+{\listtext	\uc0\u8226 	}Valid format for a clip is that it must have a three-digit number followed by an undrscore then a clip name. Example 001_myclip.mp4 or 001_myimage.jpg\
+{\listtext	\uc0\u8226 	}The three-digit number before the underscore corresponds to the DMX value. \
+{\listtext	\uc0\u8226 	}Channel configurations is a follows: Start channel is the video clip, next channel is dimmer, and the third is play type\
+{\listtext	\uc0\u8226 	}if the playback value is 0 loop the clip or image, it 1 play the video clip to the end then go back to black\
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0
+\cf0 \
+\
+Have a production mode button. When clicked, make monitors 1 and 2 show a black screen and start listening for sACN. When a valid channel and value are received show the video or image\
 \
 Refer to PRD for tech specifications.}

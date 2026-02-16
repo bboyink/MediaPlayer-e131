@@ -1,12 +1,14 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use std::fs;
+use std::io::{Read, Write};
 
-/// Resolution presets available for each monitor
+/// Resolution options for monitors
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type")]
 pub enum Resolution {
-    HD { width: u32, height: u32 },           // 1920x1080
-    FourK { width: u32, height: u32 },        // 3840x2160
+    HD { width: u32, height: u32 },
+    FourK { width: u32, height: u32 },
     Custom { width: u32, height: u32 },
 }
 
@@ -16,34 +18,8 @@ impl Default for Resolution {
     }
 }
 
-impl Resolution {
-    pub fn hd() -> Self {
-        Resolution::HD { width: 1920, height: 1080 }
-    }
-    
-    pub fn four_k() -> Self {
-        Resolution::FourK { width: 3840, height: 2160 }
-    }
-    
-    pub fn width(&self) -> u32 {
-        match self {
-            Resolution::HD { width, .. } => *width,
-            Resolution::FourK { width, .. } => *width,
-            Resolution::Custom { width, .. } => *width,
-        }
-    }
-    
-    pub fn height(&self) -> u32 {
-        match self {
-            Resolution::HD { height, .. } => *height,
-            Resolution::FourK { height, .. } => *height,
-            Resolution::Custom { height, .. } => *height,
-        }
-    }
-}
-
-/// Orientation for monitor output
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+/// Monitor orientation
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum Orientation {
     Horizontal,
     Vertical,
@@ -55,14 +31,46 @@ impl Default for Orientation {
     }
 }
 
-/// Configuration for a single monitor output
+/// sACN reception mode
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum SacnMode {
+    Multicast,
+    Unicast,
+}
+
+impl Default for SacnMode {
+    fn default() -> Self {
+        SacnMode::Multicast
+    }
+}
+
+/// sACN configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SacnConfig {
+    pub universe: u16,
+    pub mode: SacnMode,
+    pub ip_address: String,
+    pub unicast_ip: String,
+    pub network_interface: String,
+}
+
+impl Default for SacnConfig {
+    fn default() -> Self {
+        SacnConfig {
+            universe: 1,
+            mode: SacnMode::Multicast,
+            ip_address: "0.0.0.0".to_string(),
+            unicast_ip: String::new(),
+            network_interface: String::new(),
+        }
+    }
+}
+
+/// Monitor configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MonitorConfig {
-    pub name: String,
     pub enabled: bool,
-    pub start_channel: u16,      // DMX start channel (1-512)
-    pub clip_channel_offset: u8, // Offset from start (usually 0)
-    pub dimmer_channel_offset: u8, // Offset from start (usually 1)
+    pub start_channel: u16,
     pub media_folder: PathBuf,
     pub resolution: Resolution,
     pub orientation: Orientation,
@@ -71,12 +79,9 @@ pub struct MonitorConfig {
 impl Default for MonitorConfig {
     fn default() -> Self {
         MonitorConfig {
-            name: String::from("Monitor"),
             enabled: true,
             start_channel: 1,
-            clip_channel_offset: 0,
-            dimmer_channel_offset: 1,
-            media_folder: PathBuf::from(""),
+            media_folder: PathBuf::new(),
             resolution: Resolution::default(),
             orientation: Orientation::default(),
         }
@@ -85,50 +90,54 @@ impl Default for MonitorConfig {
 
 impl MonitorConfig {
     pub fn clip_channel(&self) -> u16 {
-        self.start_channel + self.clip_channel_offset as u16
+        self.start_channel
     }
     
     pub fn dimmer_channel(&self) -> u16 {
-        self.start_channel + self.dimmer_channel_offset as u16
+        self.start_channel + 1
+    }
+    
+    pub fn playtype_channel(&self) -> u16 {
+        self.start_channel + 2
     }
 }
 
-/// sACN / E1.31 network configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SacnConfig {
-    pub universe: u16,
-    pub listen_address: String, // e.g., "0.0.0.0:5568"
+/// Layout configuration
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum LayoutMode {
+    HorizontalSideBySide,
+    HorizontalStacked,
+    VerticalSideBySide,
+    VerticalStacked,
 }
 
-impl Default for SacnConfig {
+impl Default for LayoutMode {
     fn default() -> Self {
-        SacnConfig {
-            universe: 1,
-            listen_address: String::from("0.0.0.0:5568"),
-        }
+        LayoutMode::HorizontalSideBySide
     }
 }
 
-/// Preview mode layout options
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
-pub enum PreviewLayout {
-    SideBySide,  // Horizontal arrangement
-    Stacked,     // Vertical arrangement
+/// Preview mode
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum PreviewMode {
+    Listen,
+    Test,
 }
 
-impl Default for PreviewLayout {
+impl Default for PreviewMode {
     fn default() -> Self {
-        PreviewLayout::SideBySide
+        PreviewMode::Listen
     }
 }
 
-/// Application-wide configuration
+/// Main application configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     pub sacn: SacnConfig,
     pub monitor1: MonitorConfig,
     pub monitor2: MonitorConfig,
-    pub preview_layout: PreviewLayout,
+    pub layout: LayoutMode,
+    pub preview: PreviewMode,
     pub production_mode: bool,
 }
 
@@ -137,26 +146,37 @@ impl Default for AppConfig {
         AppConfig {
             sacn: SacnConfig::default(),
             monitor1: MonitorConfig {
-                name: String::from("Monitor 1"),
                 start_channel: 1,
-                clip_channel_offset: 0,
-                dimmer_channel_offset: 1,
                 ..Default::default()
             },
             monitor2: MonitorConfig {
-                name: String::from("Monitor 2"),
                 start_channel: 10,
-                clip_channel_offset: 0,
-                dimmer_channel_offset: 1,
                 ..Default::default()
             },
-            preview_layout: PreviewLayout::default(),
+            layout: LayoutMode::default(),
+            preview: PreviewMode::default(),
             production_mode: false,
         }
     }
 }
 
-/// DMX value update event
+/// Media file information
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MediaFile {
+    pub dmx_value: u8,
+    pub filename: String,
+    pub path: PathBuf,
+    pub media_type: MediaType,
+}
+
+/// Media file type
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum MediaType {
+    Video,
+    Image,
+}
+
+/// DMX update event
 #[derive(Debug, Clone, Serialize)]
 pub struct DmxUpdate {
     pub universe: u16,
@@ -164,17 +184,60 @@ pub struct DmxUpdate {
     pub value: u8,
 }
 
-/// Media clip change event
+/// Network interface information
 #[derive(Debug, Clone, Serialize)]
-pub struct ClipChange {
-    pub monitor: u8, // 1 or 2
-    pub filename: String,
-    pub dmx_value: u8,
+pub struct NetworkInterface {
+    pub name: String,
+    pub ip_address: String,
 }
 
-/// Dimmer level change event
-#[derive(Debug, Clone, Serialize)]
-pub struct DimmerChange {
-    pub monitor: u8, // 1 or 2
-    pub level: f32,  // 0.0 to 1.0 (derived from DMX 0-255)
+impl AppConfig {
+    /// Get the path to the configuration file (in the same directory as the executable)
+    pub fn get_config_path() -> Result<PathBuf, String> {
+        let exe_path = std::env::current_exe()
+            .map_err(|e| format!("Failed to get executable path: {}", e))?;
+        
+        let exe_dir = exe_path.parent()
+            .ok_or_else(|| "Failed to get executable directory".to_string())?;
+        
+        Ok(exe_dir.join("configuration.json"))
+    }
+    
+    /// Load configuration from JSON file, or create default if it doesn't exist
+    pub fn load() -> Result<Self, String> {
+        let config_path = Self::get_config_path()?;
+        
+        if !config_path.exists() {
+            // Create default configuration and save it
+            let default_config = AppConfig::default();
+            default_config.save()?;
+            return Ok(default_config);
+        }
+        
+        let mut file = fs::File::open(&config_path)
+            .map_err(|e| format!("Failed to open config file: {}", e))?;
+        
+        let mut contents = String::new();
+        file.read_to_string(&mut contents)
+            .map_err(|e| format!("Failed to read config file: {}", e))?;
+        
+        serde_json::from_str(&contents)
+            .map_err(|e| format!("Failed to parse config file: {}", e))
+    }
+    
+    /// Save configuration to JSON file
+    pub fn save(&self) -> Result<(), String> {
+        let config_path = Self::get_config_path()?;
+        
+        let json = serde_json::to_string_pretty(self)
+            .map_err(|e| format!("Failed to serialize config: {}", e))?;
+        
+        let mut file = fs::File::create(&config_path)
+            .map_err(|e| format!("Failed to create config file: {}", e))?;
+        
+        file.write_all(json.as_bytes())
+            .map_err(|e| format!("Failed to write config file: {}", e))?;
+        
+        Ok(())
+    }
 }

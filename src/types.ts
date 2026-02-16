@@ -1,88 +1,75 @@
-// TypeScript types matching Rust configuration structures
+// TypeScript types matching Rust config.rs structures
 
-export type ResolutionType = 
-  | { type: "HD"; width: number; height: number }
-  | { type: "FourK"; width: number; height: number }
-  | { type: "Custom"; width: number; height: number };
+export type Resolution = 
+  | { type: 'HD' }
+  | { type: 'FourK' }
+  | { type: 'Custom', width: number, height: number };
 
-export type Orientation = "Horizontal" | "Vertical";
+export type Orientation = 'Horizontal' | 'Vertical';
 
-export interface MonitorConfig {
-  name: string;
-  enabled: boolean;
-  start_channel: number;
-  clip_channel_offset: number;
-  dimmer_channel_offset: number;
-  media_folder: string;
-  resolution: ResolutionType;
-  orientation: Orientation;
-}
+export type SacnMode = 'Multicast' | 'Unicast';
 
 export interface SacnConfig {
   universe: number;
-  listen_address: string;
+  mode: SacnMode;
+  ip_address: string;
+  unicast_ip: string;
+  network_interface: string;
 }
 
-export type PreviewLayout = "SideBySide" | "Stacked";
+export interface MonitorConfig {
+  enabled: boolean;
+  start_channel: number;
+  media_folder: string;
+  resolution: Resolution;
+  orientation: Orientation;
+}
+
+export type LayoutMode = 
+  | 'HorizontalSideBySide'
+  | 'HorizontalStacked'
+  | 'VerticalSideBySide'
+  | 'VerticalStacked';
+
+export type PreviewMode = 'Listen' | 'Test';
 
 export interface AppConfig {
   sacn: SacnConfig;
   monitor1: MonitorConfig;
   monitor2: MonitorConfig;
-  preview_layout: PreviewLayout;
+  layout: LayoutMode;
+  preview: PreviewMode;
   production_mode: boolean;
+}
+
+export type MediaType = 'Video' | 'Image';
+
+export interface MediaFile {
+  dmx_value: number;
+  filename: string;
+  path: string;
+  media_type: MediaType;
 }
 
 export interface DmxUpdate {
   universe: number;
-  channel: number;
-  value: number;
+  data: number[];
 }
 
-export interface ClipChange {
-  monitor: number;
-  filename: string;
-  dmx_value: number;
-}
-
-export interface DimmerChange {
-  monitor: number;
-  level: number;
-}
-
-export interface MonitorInfo {
-  id: number;
+export interface NetworkInterface {
   name: string;
-  width: number;
-  height: number;
-  x: number;
-  y: number;
+  ip_address: string;
 }
 
-export const createDefaultResolution = (): ResolutionType => ({
-  type: "HD",
-  width: 1920,
-  height: 1080,
-});
+// Helper functions for MonitorConfig
+export function getClipChannel(monitor: MonitorConfig): number {
+  return monitor.start_channel;
+}
 
-export const createDefaultMonitorConfig = (name: string, startChannel: number): MonitorConfig => ({
-  name,
-  enabled: true,
-  start_channel: startChannel,
-  clip_channel_offset: 0,
-  dimmer_channel_offset: 1,
-  media_folder: "",
-  resolution: createDefaultResolution(),
-  orientation: "Horizontal",
-});
+export function getDimmerChannel(monitor: MonitorConfig): number {
+  return monitor.start_channel + 1;
+}
 
-export const createDefaultAppConfig = (): AppConfig => ({
-  sacn: {
-    universe: 1,
-    listen_address: "0.0.0.0:5568",
-  },
-  monitor1: createDefaultMonitorConfig("Monitor 1", 1),
-  monitor2: createDefaultMonitorConfig("Monitor 2", 10),
-  preview_layout: "SideBySide",
-  production_mode: false,
-});
+export function getPlaytypeChannel(monitor: MonitorConfig): number {
+  return monitor.start_channel + 2;
+}
