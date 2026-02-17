@@ -30,8 +30,9 @@
     
     #output-video {
       position: absolute;
-      top: 0;
-      left: 0;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
       width: 100%;
       height: 100%;
       object-fit: contain;
@@ -39,21 +40,34 @@
       background: #000;
     }
     
+    #output-video.vertical {
+      transform: translate(-50%, -50%) rotate(-90deg);
+      width: 100vh;
+      height: 100vw;
+    }
+    
     #output-image {
       position: absolute;
-      top: 0;
-      left: 0;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
       width: 100%;
       height: 100%;
       object-fit: contain;
       display: none;
       background: #000;
     }
+    
+    #output-image.vertical {
+      transform: translate(-50%, -50%) rotate(-90deg);
+      width: 100vh;
+      height: 100vw;
+    }
   </style>
 </head>
 <body>
   <div id="output-container">
-    <video id="output-video" autoplay loop muted></video>
+    <video id="output-video" autoplay muted></video>
     <img id="output-image" alt="Output">
   </div>
   
@@ -66,8 +80,8 @@
     const videoElement = document.getElementById("output-video");
     const imageElement = document.getElementById("output-image");
     
-    function updateMedia(mediaUrl, dimmer) {
-      console.log("updateMedia called:", { mediaUrl, dimmer });
+    function updateMedia(mediaUrl, dimmer, playtype, orientation) {
+      console.log("updateMedia called:", { mediaUrl, dimmer, playtype, orientation });
       
       currentMediaUrl = mediaUrl;
       currentDimmer = dimmer;
@@ -83,13 +97,24 @@
       
       const isVideo = mediaUrl.match(/\.(mp4|mov|avi|mkv|webm)$/i);
       const opacity = dimmer / 255;
+      // playtype: 0-127 = loop, 128-255 = no loop
+      const shouldLoop = playtype < 128;
+      const isVertical = orientation === 'Vertical';
       
-      console.log("Media type:", isVideo ? "video" : "image", "opacity:", opacity);
+      console.log("Media type:", isVideo ? "video" : "image", "opacity:", opacity, "loop:", shouldLoop, "vertical:", isVertical);
       
       if (isVideo) {
         imageElement.style.display = "none";
         videoElement.style.display = "block";
         videoElement.style.opacity = opacity;
+        videoElement.loop = shouldLoop;
+        
+        // Apply vertical class for rotation
+        if (isVertical) {
+          videoElement.classList.add('vertical');
+        } else {
+          videoElement.classList.remove('vertical');
+        }
         
         console.log("Loading video:", mediaUrl);
         
@@ -104,11 +129,8 @@
           console.error("Video error:", e);
         };
         
-        videoElement.onended = () => {
-          console.log("Video ended, looping");
-          videoElement.currentTime = 0;
-          videoElement.play().catch(e => console.error("Loop play failed:", e));
-        };
+        // Remove onended handler - let the loop attribute handle it
+        videoElement.onended = null;
         
         videoElement.src = mediaUrl;
         videoElement.load();
@@ -129,13 +151,20 @@
         imageElement.src = mediaUrl;
         imageElement.style.display = "block";
         imageElement.style.opacity = opacity;
+        
+        // Apply vertical class for rotation
+        if (isVertical) {
+          imageElement.classList.add('vertical');
+        } else {
+          imageElement.classList.remove('vertical');
+        }
       }
     }
     
     window.updateMedia = updateMedia;
     console.log("Output window ready, updateMedia function exposed");
     
-    updateMedia(null, 255);
+    updateMedia(null, 255, 0, 'Horizontal');
   </script>
 </body>
 </html>

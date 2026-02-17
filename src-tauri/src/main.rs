@@ -173,8 +173,8 @@ async fn open_output_window(
     display_index: usize,
     width: u32,
     height: u32,
-    _window_x: Option<i32>,
-    _window_y: Option<i32>,
+    window_x: Option<i32>,
+    window_y: Option<i32>,
 ) -> Result<(), String> {
     use tauri::Manager;
     use tauri::webview::WebviewWindowBuilder;
@@ -211,17 +211,27 @@ async fn open_output_window(
     let position = monitor.position();
     let size = monitor.size();
     
-    // Position window at exact top-left of the monitor
-    // Offset by -10 to compensate for Windows positioning quirk
-    let pos_x = position.x - 10;
-    let pos_y = position.y - 10;
+    // Use saved window position if available, otherwise use monitor default position
+    // Note: Frontend clears window_x/window_y when display_index changes, so saved positions
+    // are always for the currently selected monitor
+    let (final_x, final_y) = if let (Some(saved_x), Some(saved_y)) = (window_x, window_y) {
+        println!("Using saved window position: ({}, {})", saved_x, saved_y);
+        (saved_x, saved_y)
+    } else {
+        // Position window at exact top-left of the monitor
+        // Offset by -10 to compensate for Windows positioning quirk
+        let default_x = position.x - 10;
+        let default_y = position.y - 10;
+        println!("No saved position, using default monitor position: ({}, {})", default_x, default_y);
+        (default_x, default_y)
+    };
     
     println!("Monitor {} info: position=({}, {}), size={}x{}", 
         actual_display_index, position.x, position.y, size.width, size.height);
     println!("Window position: using=({}, {})",
-         pos_x, pos_y);
+         final_x, final_y);
     println!("Opening output window '{}' on display {} at position ({}, {}) with resolution {}x{}", 
-        window_label, actual_display_index, pos_x, pos_y, width, height);
+        window_label, actual_display_index, final_x, final_y, width, height);
     
     // Build and create the window - borderless, positioned at exact monitor top-left
     let window = WebviewWindowBuilder::new(
@@ -231,7 +241,7 @@ async fn open_output_window(
     )
     .title(format!("Output Window {}", monitor_id))
     .inner_size(width as f64, height as f64)
-    .position(pos_x as f64, pos_y as f64)
+    .position(final_x as f64, final_y as f64)
     .resizable(false)
     .decorations(false)
     .visible(false)
@@ -244,8 +254,8 @@ async fn open_output_window(
     
     // Set exact position again after creation to ensure correctness
     window.set_position(tauri::Position::Physical(tauri::PhysicalPosition { 
-        x: pos_x, 
-        y: pos_y 
+        x: final_x, 
+        y: final_y 
     })).map_err(|e| format!("Failed to set position: {}", e))?;
     
     // Force window to front
@@ -263,7 +273,7 @@ async fn move_output_window(
     monitor_id: String,
     delta_x: i32,
     delta_y: i32,
-) -> Result<(), String> {
+) -> Result<(i32, i32), String> {
     use tauri::Manager;
     
     let window_label = format!("output-{}", monitor_id);
@@ -279,7 +289,7 @@ async fn move_output_window(
         })).map_err(|e| format!("Failed to move window: {}", e))?;
         
         println!("Moved window '{}' to ({}, {})", window_label, new_x, new_y);
-        Ok(())
+        Ok((new_x, new_y))
     } else {
         Err(format!("Window '{}' not found", window_label))
     }
@@ -316,13 +326,15 @@ async fn update_output_window(
     monitor_id: String,
     media_url: Option<String>,
     dimmer: u8,
+    playtype: u8,
+    orientation: String,
 ) -> Result<(), String> {
     use tauri::Manager;
     
     let window_label = format!("output-{}", monitor_id);
     
-    println!("update_output_window called for '{}' with media: {:?}, dimmer: {}", 
-        window_label, media_url, dimmer);
+    println!("update_output_window called for '{}' with media: {:?}, dimmer: {}, playtype: {}, orientation: {}", 
+        window_label, media_url, dimmer, playtype, orientation);
     
     if let Some(window) = app_handle.get_webview_window(&window_label) {
         // Use evaluate_script to directly call updateMedia function in the window
@@ -331,8 +343,8 @@ async fn update_output_window(
             None => "null".to_string()
         };
         
-        let script = format!("if (typeof updateMedia === 'function') {{ updateMedia({}, {}); console.log('updateMedia called with:', {}, {}); }} else {{ console.error('updateMedia function not found!'); }}", 
-            media_url_js, dimmer, media_url_js, dimmer);
+        let script = format!("if (typeof updateMedia === 'function') {{ updateMedia({}, {}, {}, '{}'); console.log('updateMedia called with:', {}, {}, {}, '{}'); }} else {{ console.error('updateMedia function not found!'); }}", 
+            media_url_js, dimmer, playtype, orientation, media_url_js, dimmer, playtype, orientation);
         
         println!("Executing script in window '{}'", window_label);
         window.eval(&script)

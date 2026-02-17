@@ -293,7 +293,12 @@ function ConfigSection({
             value={config.monitor1.display_index}
             onChange={(e) => saveConfig({
               ...config,
-              monitor1: { ...config.monitor1, display_index: parseInt(e.target.value) }
+              monitor1: { 
+                ...config.monitor1, 
+                display_index: parseInt(e.target.value),
+                window_x: null,
+                window_y: null
+              }
             })}
           >
             {availableDisplays.map((display) => (
@@ -445,7 +450,12 @@ function ConfigSection({
             value={config.monitor2.display_index}
             onChange={(e) => saveConfig({
               ...config,
-              monitor2: { ...config.monitor2, display_index: parseInt(e.target.value) }
+              monitor2: { 
+                ...config.monitor2, 
+                display_index: parseInt(e.target.value),
+                window_x: null,
+                window_y: null
+              }
             })}
           >
             {availableDisplays.map((display) => (
@@ -729,6 +739,19 @@ function PreviewSection({ config, saveConfig }: { config: AppConfig, saveConfig:
         return
       }
       
+      // Don't handle arrow keys if user is interacting with form controls or sliders
+      const target = e.target as HTMLElement
+      const tagName = target.tagName.toLowerCase()
+      const isFormControl = ['input', 'select', 'textarea', 'button'].includes(tagName)
+      const isSlider = target.closest('.rc-slider') !== null || 
+                       target.classList.contains('rc-slider') ||
+                       target.getAttribute('role') === 'slider'
+      const isContentEditable = target.isContentEditable
+      
+      if (isFormControl || isSlider || isContentEditable) {
+        return
+      }
+      
       e.preventDefault()
       const step = e.shiftKey ? 10 : 1
       
@@ -751,11 +774,26 @@ function PreviewSection({ config, saveConfig }: { config: AppConfig, saveConfig:
       }
       
       try {
-        await invoke('move_output_window', {
+        // Move the window and get the new position
+        const [newX, newY] = await invoke<[number, number]>('move_output_window', {
           monitorId: activeMonitor,
           deltaX,
           deltaY
         })
+        
+        // Update config with the actual new position from the backend
+        const monitorKey = activeMonitor as 'monitor1' | 'monitor2'
+        const newConfig = {
+          ...config,
+          [monitorKey]: {
+            ...config[monitorKey],
+            window_x: newX,
+            window_y: newY
+          }
+        }
+        
+        // Save to backend and update state
+        await saveConfig(newConfig)
       } catch (err) {
         console.error('Failed to move output window:', err)
       }
@@ -763,7 +801,7 @@ function PreviewSection({ config, saveConfig }: { config: AppConfig, saveConfig:
     
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [activeMonitor])
+  }, [activeMonitor, config])
 
   useEffect(() => {
     if (config.monitor1.media_folder) {
@@ -905,15 +943,17 @@ function PreviewSection({ config, saveConfig }: { config: AppConfig, saveConfig:
         ? convertFileSrc(`${config.monitor1.media_folder}/${monitor1File}`)
         : null
       
-      console.log('Updating Monitor 1 output window:', { mediaUrl, dimmer: monitor1Dimmer })
+      console.log('Updating Monitor 1 output window:', { mediaUrl, dimmer: monitor1Dimmer, playtype: monitor1Mode, orientation: config.monitor1.orientation })
       
       invoke('update_output_window', {
         monitorId: 'monitor1',
         mediaUrl,
-        dimmer: monitor1Dimmer
+        dimmer: monitor1Dimmer,
+        playtype: monitor1Mode,
+        orientation: config.monitor1.orientation
       }).catch(err => console.error('Failed to update Monitor 1 output:', err))
     }
-  }, [monitor1File, monitor1Video, monitor1Dimmer, monitor1OutputEnabled, config.preview, config.monitor1.enabled, config.monitor1.media_folder])
+  }, [monitor1File, monitor1Video, monitor1Dimmer, monitor1Mode, monitor1OutputEnabled, config.preview, config.monitor1.enabled, config.monitor1.media_folder, config.monitor1.orientation])
   
   // Update Monitor 2 output window when media or dimmer changes
   useEffect(() => {
@@ -925,10 +965,12 @@ function PreviewSection({ config, saveConfig }: { config: AppConfig, saveConfig:
       invoke('update_output_window', {
         monitorId: 'monitor2',
         mediaUrl,
-        dimmer: monitor2Dimmer
+        dimmer: monitor2Dimmer,
+        playtype: monitor2Mode,
+        orientation: config.monitor2.orientation
       }).catch(err => console.error('Failed to update Monitor 2 output:', err))
     }
-  }, [monitor2File, monitor2Video, monitor2Dimmer, monitor2OutputEnabled, config.preview, config.monitor2.enabled, config.monitor2.media_folder])
+  }, [monitor2File, monitor2Video, monitor2Dimmer, monitor2Mode, monitor2OutputEnabled, config.preview, config.monitor2.enabled, config.monitor2.media_folder, config.monitor2.orientation])
 
   // Initialize and update Monitor 1 video player
   useEffect(() => {
@@ -959,10 +1001,14 @@ function PreviewSection({ config, saveConfig }: { config: AppConfig, saveConfig:
 
           // Manual loop handling for seamless playback
           monitor1PlayerRef.current.on('ended', () => {
-            console.log('Monitor 1 video ended - restarting')
-            if (monitor1PlayerRef.current) {
+            console.log('Monitor 1 video ended')
+            // Mode: 0-127 = loop, 128-255 = no loop
+            if (monitor1Mode < 128 && monitor1PlayerRef.current) {
+              console.log('Looping Monitor 1 video (mode < 128)')
               monitor1PlayerRef.current.currentTime(0)
               monitor1PlayerRef.current.play()
+            } else {
+              console.log('Not looping Monitor 1 video (mode >= 128)')
             }
           })
 
@@ -1066,10 +1112,14 @@ function PreviewSection({ config, saveConfig }: { config: AppConfig, saveConfig:
 
           // Manual loop handling for seamless playback
           monitor2PlayerRef.current.on('ended', () => {
-            console.log('Monitor 2 video ended - restarting')
-            if (monitor2PlayerRef.current) {
+            console.log('Monitor 2 video ended')
+            // Mode: 0-127 = loop, 128-255 = no loop
+            if (monitor2Mode < 128 && monitor2PlayerRef.current) {
+              console.log('Looping Monitor 2 video (mode < 128)')
               monitor2PlayerRef.current.currentTime(0)
               monitor2PlayerRef.current.play()
+            } else {
+              console.log('Not looping Monitor 2 video (mode >= 128)')
             }
           })
 
@@ -1393,10 +1443,10 @@ function PreviewSection({ config, saveConfig }: { config: AppConfig, saveConfig:
         <div className={`preview-monitors ${config.layout.toLowerCase()}`}>
           {config.monitor1.enabled && (
             <div 
-              className={`preview-monitor ${activeMonitor === 'monitor1' ? 'active-for-keyboard' : ''}`}
+              className="preview-monitor"
               onClick={() => setActiveMonitor('monitor1')}
               tabIndex={0}
-              style={{ cursor: 'pointer', outline: activeMonitor === 'monitor1' ? '3px solid #0066ff' : 'none' }}
+              style={{ cursor: 'pointer' }}
             >
               <div className={`preview-screen ${config.monitor1.orientation.toLowerCase()}`}>
                 {/* Video element always rendered for video.js stability */}
@@ -1430,11 +1480,6 @@ function PreviewSection({ config, saveConfig }: { config: AppConfig, saveConfig:
               </div>
               <div className="preview-label">
                 <strong>Monitor 1</strong>
-                {activeMonitor === 'monitor1' && (
-                  <span style={{ color: '#0066ff', fontSize: '11px', marginLeft: '8px' }}>
-                    ← Use arrow keys to move
-                  </span>
-                )}
                 <span className="preview-filename">
                   {monitor1Video > 0 && monitor1File ? monitor1File : 'No media'}
                 </span>
@@ -1448,13 +1493,6 @@ function PreviewSection({ config, saveConfig }: { config: AppConfig, saveConfig:
                       />
                       Output to Display
                     </label>
-                    {monitor1OutputEnabled && (
-                      <div className="output-controls">
-                        <span style={{ fontSize: '12px', color: '#4ade80' }}>
-                          ✓ Output window active (dragging not supported in dev mode)
-                        </span>
-                      </div>
-                    )}
                   </>
                 )}
               </div>
@@ -1463,10 +1501,10 @@ function PreviewSection({ config, saveConfig }: { config: AppConfig, saveConfig:
 
           {config.monitor2.enabled && (
             <div 
-              className={`preview-monitor ${activeMonitor === 'monitor2' ? 'active-for-keyboard' : ''}`}
+              className="preview-monitor"
               onClick={() => setActiveMonitor('monitor2')}
               tabIndex={0}
-              style={{ cursor: 'pointer', outline: activeMonitor === 'monitor2' ? '3px solid #0066ff' : 'none' }}
+              style={{ cursor: 'pointer' }}
             >
               <div className={`preview-screen ${config.monitor2.orientation.toLowerCase()}`}>
                 {/* Video element always rendered for video.js stability */}
@@ -1500,11 +1538,6 @@ function PreviewSection({ config, saveConfig }: { config: AppConfig, saveConfig:
               </div>
               <div className="preview-label">
                 <strong>Monitor 2</strong>
-                {activeMonitor === 'monitor2' && (
-                  <span style={{ color: '#0066ff', fontSize: '11px', marginLeft: '8px' }}>
-                    ← Use arrow keys to move
-                  </span>
-                )}
                 <span className="preview-filename">
                   {monitor2Video > 0 && monitor2File ? monitor2File : 'No media'}
                 </span>
@@ -1518,13 +1551,6 @@ function PreviewSection({ config, saveConfig }: { config: AppConfig, saveConfig:
                       />
                       Output to Display
                     </label>
-                    {monitor2OutputEnabled && (
-                      <div className="output-controls">
-                        <span style={{ fontSize: '12px', color: '#4ade80' }}>
-                          ✓ Output window active (dragging not supported in dev mode)
-                        </span>
-                      </div>
-                    )}
                   </>
                 )}
               </div>
