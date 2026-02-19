@@ -1,0 +1,25 @@
+"$schema" = "../../gen/schemas/schema.json"
+
+[[permission]]
+identifier = "allow-all-commands"
+description = "Allows all custom commands"
+commands.allow = [
+  "get_config",
+  "update_config",
+  "get_network_interfaces",
+  "scan_media_folder",
+  "get_media_files",
+  "select_folder",
+  "get_available_displays",
+  "open_output_window",
+  "close_output_window",
+  "update_output_window",
+  "move_output_window",
+  "start_sacn_listener",
+  "stop_sacn_listener",
+  "create_test_sender",
+  "stop_test_sender",
+  "send_test_dmx",
+  "send_test_three_channels",
+  "send_test_sequence"
+]

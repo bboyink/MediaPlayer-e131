@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { invoke } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
 import { convertFileSrc } from '@tauri-apps/api/core'
-import { AppConfig, NetworkInterface, DisplayInfo } from './types'
+import { AppConfig, NetworkInterface, DisplayInfo, DmxUpdate } from './types'
 import Slider from 'rc-slider'
 import videojs from 'video.js'
 import 'video.js/dist/video-js.css'
@@ -123,6 +124,293 @@ function App() {
   )
 }
 
+// sACN Test Panel Component
+function SacnTestPanel({ universe, isListening }: { universe: number; isListening: boolean }) {
+  const [testSenderActive, setTestSenderActive] = useState(false)
+  const [channel1, setChannel1] = useState(100)  // Clip
+  const [channel2, setChannel2] = useState(255)  // Dimmer
+  const [channel3, setChannel3] = useState(1)    // Playtype
+  const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState<string | null>(null)
+  const [isCollapsed, setIsCollapsed] = useState(true)  // Start collapsed
+
+  const createTestSender = async () => {
+    try {
+      setError(null)
+      // Try to stop any existing sender first (in case of state mismatch)
+      try {
+        await invoke('stop_test_sender')
+      } catch {
+        // Ignore error if no sender exists
+      }
+      
+      await invoke('create_test_sender', { universe })
+      setTestSenderActive(true)
+      setSuccess('Test sender created!')
+      setTimeout(() => setSuccess(null), 2000)
+    } catch (err) {
+      setError(String(err))
+      setTestSenderActive(false)
+    }
+  }
+
+  const stopTestSender = async () => {
+    try {
+      setError(null)
+      await invoke('stop_test_sender')
+      setTestSenderActive(false)
+      setSuccess('Test sender stopped')
+      setTimeout(() => setSuccess(null), 2000)
+    } catch (err) {
+      setError(String(err))
+    }
+  }
+
+  const sendTestData = async () => {
+    console.log('sendTestData clicked, testSenderActive:', testSenderActive)
+    
+    if (!testSenderActive) {
+      setError('Create test sender first!')
+      setTimeout(() => setError(null), 3000)
+      return
+    }
+    
+    try {
+      setError(null)
+      console.log('Sending test data:', { channel1, channel2, channel3 })
+      await invoke('send_test_three_channels', {
+        startChannel: 1,
+        clipValue: channel1,
+        dimmerValue: channel2,
+        playtypeValue: channel3
+      })
+      setSuccess(`Sent: Ch1=${channel1}, Ch2=${channel2}, Ch3=${channel3}`)
+      setTimeout(() => setSuccess(null), 2000)
+    } catch (err) {
+      console.error('Failed to send test data:', err)
+      setError(String(err))
+    }
+  }
+
+  const sendQuickTest = async (clip: number, dimmer: number, playtype: number) => {
+    if (!testSenderActive) {
+      await createTestSender()
+      // Wait a moment for sender to be ready
+      await new Promise(r => setTimeout(r, 100))
+    }
+    
+    setChannel1(clip)
+    setChannel2(dimmer)
+    setChannel3(playtype)
+    
+    try {
+      setError(null)
+      await invoke('send_test_three_channels', {
+        startChannel: 1,
+        clipValue: clip,
+        dimmerValue: dimmer,
+        playtypeValue: playtype
+      })
+      setSuccess(`Quick test: Ch1=${clip}, Ch2=${dimmer}, Ch3=${playtype}`)
+      setTimeout(() => setSuccess(null), 2000)
+    } catch (err) {
+      setError(String(err))
+    }
+  }
+
+  return (
+    <div className="sacn-test-panel">
+      <div 
+        className="test-panel-header" 
+        onClick={() => setIsCollapsed(!isCollapsed)}
+        style={{ 
+          cursor: 'pointer', 
+          padding: '12px', 
+          background: 'rgba(255, 255, 255, 0.03)',
+          borderRadius: '6px',
+          marginBottom: isCollapsed ? '0' : '16px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          border: '1px solid rgba(255, 255, 255, 0.1)'
+        }}
+      >
+        <span style={{ fontWeight: 500, color: '#e0e0e0' }}>
+          {isCollapsed ? '▶' : '▼'} Loopback Test Controls
+        </span>
+        <span style={{ fontSize: '12px', color: '#888' }}>
+          {testSenderActive ? '🟢 Active' : '⚫ Inactive'}
+        </span>
+      </div>
+      
+      {!isCollapsed && (
+        <>
+          {!isListening && (
+            <div className="warning-message" style={{ marginBottom: '12px' }}>
+              ⚠️ Start the DMX Monitor above to see the test data you send
+            </div>
+          )}
+          
+          <div style={{ marginBottom: '16px' }}>
+        {!testSenderActive ? (
+          <button onClick={createTestSender} className="btn-primary">
+            Create Test Sender
+          </button>
+        ) : (
+          <button onClick={stopTestSender} className="btn-secondary">
+            Stop Test Sender
+          </button>
+        )}
+        {!testSenderActive && (
+          <div style={{ marginTop: '8px', fontSize: '11px', color: '#888' }}>
+            Having issues? <a 
+              onClick={async () => {
+                try {
+                  await invoke('stop_test_sender')
+                  setTestSenderActive(false)
+                  setSuccess('Forced stop completed')
+                  setTimeout(() => setSuccess(null), 2000)
+                } catch (err) {
+                  setError(String(err))
+                }
+              }}
+              style={{ color: '#4a9eff', cursor: 'pointer', textDecoration: 'underline' }}
+            >
+              Force stop backend sender
+            </a>
+          </div>
+        )}
+      </div>
+
+      {error && (
+        <div className="error-message" style={{ marginBottom: '12px' }}>
+          {error}
+        </div>
+      )}
+
+      {success && (
+        <div className="success-message" style={{ marginBottom: '12px' }}>
+          ✓ {success}
+        </div>
+      )}
+
+      <div className="test-controls">
+        <div className="test-channel-group">
+          <label>
+            <strong>Channel 1 - Clip</strong>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <input
+                type="number"
+                min="0"
+                max="255"
+                value={channel1}
+                onChange={(e) => setChannel1(parseInt(e.target.value) || 0)}
+                style={{ width: '80px' }}
+              />
+              <input
+                type="range"
+                min="0"
+                max="255"
+                value={channel1}
+                onChange={(e) => setChannel1(parseInt(e.target.value))}
+                style={{ flex: 1 }}
+              />
+            </div>
+          </label>
+        </div>
+
+        <div className="test-channel-group">
+          <label>
+            <strong>Channel 2 - Dimmer</strong>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <input
+                type="number"
+                min="0"
+                max="255"
+                value={channel2}
+                onChange={(e) => setChannel2(parseInt(e.target.value) || 0)}
+                style={{ width: '80px' }}
+              />
+              <input
+                type="range"
+                min="0"
+                max="255"
+                value={channel2}
+                onChange={(e) => setChannel2(parseInt(e.target.value))}
+                style={{ flex: 1 }}
+              />
+            </div>
+          </label>
+        </div>
+
+        <div className="test-channel-group">
+          <label>
+            <strong>Channel 3 - Play Type</strong>
+            <select 
+              value={channel3} 
+              onChange={(e) => setChannel3(parseInt(e.target.value))}
+              style={{ width: '100%', padding: '8px' }}
+            >
+              <option value="0">0 - Stop</option>
+              <option value="1">1 - Play Once</option>
+              <option value="2">2 - Loop</option>
+            </select>
+          </label>
+        </div>
+
+        <button 
+          onClick={sendTestData} 
+          className="btn-primary"
+          style={{ 
+            marginTop: '12px', 
+            width: '100%',
+            opacity: testSenderActive ? 1 : 0.6,
+            cursor: testSenderActive ? 'pointer' : 'not-allowed'
+          }}
+        >
+          Send Test Data {!testSenderActive && '(Create sender first)'}
+        </button>
+      </div>
+
+      <div className="quick-tests" style={{ marginTop: '16px' }}>
+        <h4>Quick Tests:</h4>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+          <button 
+            onClick={() => sendQuickTest(1, 255, 1)}
+            className="btn-secondary"
+            style={{ fontSize: '12px' }}
+          >
+            Clip 1 Full Bright
+          </button>
+          <button 
+            onClick={() => sendQuickTest(10, 255, 1)}
+            className="btn-secondary"
+            style={{ fontSize: '12px' }}
+          >
+            Clip 10 Full Bright
+          </button>
+          <button 
+            onClick={() => sendQuickTest(50, 128, 1)}
+            className="btn-secondary"
+            style={{ fontSize: '12px' }}
+          >
+            Clip 50 Half Dim
+          </button>
+          <button 
+            onClick={() => sendQuickTest(100, 255, 2)}
+            className="btn-secondary"
+            style={{ fontSize: '12px' }}
+          >
+            Clip 100 Loop
+          </button>
+        </div>
+      </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 // DMX Section Component
 function DmxSection({ 
   config, 
@@ -133,6 +421,70 @@ function DmxSection({
   saveConfig: (cfg: AppConfig) => void
   networkInterfaces: NetworkInterface[]
 }) {
+  const [dmxValues, setDmxValues] = useState<Map<number, number>>(new Map())
+  const [isListening, setIsListening] = useState(false)
+  const [lastUpdate, setLastUpdate] = useState<Date | null>(null)
+  const [listenerError, setListenerError] = useState<string | null>(null)
+
+  // DMX listener for debugging
+  useEffect(() => {
+    if (!isListening) return
+
+    let unlistenFn: (() => void) | null = null
+
+    const setup = async () => {
+      try {
+        setListenerError(null)
+        await invoke('start_sacn_listener')
+        console.log('DMX debug listener started - check terminal for detailed logs')
+        setLastUpdate(new Date())
+      } catch (err) {
+        const errorMsg = String(err)
+        console.error('Failed to start DMX listener:', errorMsg)
+        setListenerError(errorMsg)
+        setIsListening(false)
+        return
+      }
+
+      unlistenFn = await listen('dmx-update', (event: any) => {
+        const update = event.payload as DmxUpdate
+        setDmxValues(prev => {
+          const next = new Map(prev)
+          next.set(update.channel, update.value)
+          return next
+        })
+        setLastUpdate(new Date())
+      })
+    }
+
+    setup()
+
+    return () => {
+      if (unlistenFn) {
+        unlistenFn()
+      }
+      invoke('stop_sacn_listener')
+        .then(() => console.log('DMX debug listener stopped'))
+        .catch(err => console.error('Failed to stop listener:', err))
+    }
+  }, [isListening])
+
+  const startListener = () => {
+    setListenerError(null)
+    setIsListening(true)
+  }
+  const stopListener = () => {
+    setIsListening(false)
+    setDmxValues(new Map())
+    setLastUpdate(null)
+    setListenerError(null)
+  }
+
+  // Get channels with non-zero values
+  const activeChannels = Array.from(dmxValues.entries())
+    .filter(([_, value]) => value > 0)
+    .sort((a, b) => a[0] - b[0])
+
   return (
     <div className="section">
       <h2>DMX Configuration</h2>
@@ -153,7 +505,7 @@ function DmxSection({
             })
           }}
         >
-          <option value="">Select network interface</option>
+          <option value="">All Interfaces</option>
           {networkInterfaces.map(iface => (
             <option key={iface.name} value={iface.name}>
               {iface.name} ({iface.ip_address})
@@ -209,6 +561,94 @@ function DmxSection({
             />
           </label>
         )}
+      </div>
+
+      <div className="card">
+        <h3>DMX Monitor</h3>
+        <p className="info">Debug incoming DMX data on Universe {config.sacn.universe}</p>
+        
+        <div className="troubleshooting-tips">
+          <h4>Troubleshooting Tips:</h4>
+          <ul>
+            <li><strong>Firewall:</strong> Ensure UDP port 5568 is allowed. Run <code>setup-firewall.ps1</code> as Administrator.</li>
+            <li><strong>Universe:</strong> Verify your lighting console is sending to Universe {config.sacn.universe}</li>
+            {config.sacn.mode === 'Multicast' ? (
+              <>
+                <li><strong>Multicast IP:</strong> Universe {config.sacn.universe} = 239.255.{Math.floor(config.sacn.universe / 256)}.{config.sacn.universe % 256}</li>
+                <li><strong>Network:</strong> Ensure your switch supports IGMP multicast routing</li>
+              </>
+            ) : (
+              <>
+                <li><strong>Unicast Mode:</strong> Console must send directly to this computer's IP address</li>
+                <li><strong>IP Address:</strong> {config.sacn.ip_address || 'Configure network interface first'}</li>
+              </>
+            )}
+            <li><strong>Test Tool:</strong> Run <code>.\test-sacn.ps1</code> for testing instructions</li>
+            <li><strong>Check Logs:</strong> Look at the terminal/console for detailed packet reception logs</li>
+          </ul>
+        </div>
+        
+        <div style={{ marginBottom: '16px' }}>
+          {!isListening ? (
+            <button onClick={startListener} className="btn-primary">
+              Start Monitoring
+            </button>
+          ) : (
+            <button onClick={stopListener} className="btn-secondary">
+              Stop Monitoring
+            </button>
+          )}
+        </div>
+
+        {listenerError && (
+          <div className="error-message">
+            <strong>Error:</strong> {listenerError}
+          </div>
+        )}
+
+        {isListening && (
+          <>
+            <div className="dmx-monitor-status">
+              <span>Status: <strong style={{ color: '#0f0' }}>Listening</strong></span>
+              {lastUpdate && (
+                <span>Last Update: {lastUpdate.toLocaleTimeString()}</span>
+              )}
+              <span>Active Channels: {activeChannels.length}</span>
+            </div>
+
+            <div className="dmx-channel-grid">
+              {activeChannels.length === 0 ? (
+                <div className="dmx-no-data">
+                  <div>No DMX data received</div>
+                  <div style={{ fontSize: '12px', marginTop: '8px', color: '#888' }}>
+                    Check the terminal output for detailed logs
+                  </div>
+                </div>
+              ) : (
+                activeChannels.map(([channel, value]) => (
+                  <div key={channel} className="dmx-channel-item">
+                    <span className="dmx-channel-num">Ch {channel}</span>
+                    <span className="dmx-channel-value">{value}</span>
+                    <div className="dmx-channel-bar">
+                      <div 
+                        className="dmx-channel-bar-fill"
+                        style={{ width: `${(value / 255) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Test Sender Panel */}
+      <div className="card">
+        <h3>🧪 sACN Loopback Test</h3>
+        <p className="info">Send test DMX data to channels 1, 2, 3 for testing without external hardware</p>
+        
+        <SacnTestPanel universe={config.sacn.universe} isListening={isListening} />
       </div>
     </div>
   )
@@ -825,8 +1265,15 @@ function PreviewSection({ config, saveConfig }: { config: AppConfig, saveConfig:
         resolution: config.monitor1.resolution
       })
       
-      if (config.preview === 'Test' && monitor1OutputEnabled && config.monitor1.enabled) {
+      if ((config.preview === 'Test' || config.preview === 'Listen') && monitor1OutputEnabled && config.monitor1.enabled) {
         console.log('Opening Monitor 1 output window...')
+        console.log('Monitor 1 config:', {
+          displayIndex: config.monitor1.display_index,
+          width: config.monitor1.resolution.width,
+          height: config.monitor1.resolution.height,
+          windowX: config.monitor1.window_x,
+          windowY: config.monitor1.window_y
+        })
         try {
           // Always close existing window first to handle monitor changes
           await invoke('close_output_window', { monitorId: 'monitor1' }).catch(() => {})
@@ -839,7 +1286,7 @@ function PreviewSection({ config, saveConfig }: { config: AppConfig, saveConfig:
             windowX: config.monitor1.window_x,
             windowY: config.monitor1.window_y
           })
-          console.log('Monitor 1 output window opened successfully', result)
+          console.log('Monitor 1 output window opened successfully:', result)
         } catch (err) {
           console.error('Failed to open output window for Monitor 1:', err)
         }
@@ -869,7 +1316,7 @@ function PreviewSection({ config, saveConfig }: { config: AppConfig, saveConfig:
         resolution: config.monitor2.resolution
       })
       
-      if (config.preview === 'Test' && monitor2OutputEnabled && config.monitor2.enabled) {
+      if ((config.preview === 'Test' || config.preview === 'Listen') && monitor2OutputEnabled && config.monitor2.enabled) {
         console.log('Opening Monitor 2 output window...')
         try {
           // Always close existing window first to handle monitor changes
@@ -938,7 +1385,7 @@ function PreviewSection({ config, saveConfig }: { config: AppConfig, saveConfig:
   
   // Update Monitor 1 output window when media or dimmer changes
   useEffect(() => {
-    if (monitor1OutputEnabled && config.preview === 'Test' && config.monitor1.enabled) {
+    if (monitor1OutputEnabled && (config.preview === 'Test' || config.preview === 'Listen') && config.monitor1.enabled) {
       const mediaUrl = monitor1File && monitor1Video > 0
         ? convertFileSrc(`${config.monitor1.media_folder}/${monitor1File}`)
         : null
@@ -957,7 +1404,7 @@ function PreviewSection({ config, saveConfig }: { config: AppConfig, saveConfig:
   
   // Update Monitor 2 output window when media or dimmer changes
   useEffect(() => {
-    if (monitor2OutputEnabled && config.preview === 'Test' && config.monitor2.enabled) {
+    if (monitor2OutputEnabled && (config.preview === 'Test' || config.preview === 'Listen') && config.monitor2.enabled) {
       const mediaUrl = monitor2File && monitor2Video > 0
         ? convertFileSrc(`${config.monitor2.media_folder}/${monitor2File}`)
         : null
@@ -1193,6 +1640,83 @@ function PreviewSection({ config, saveConfig }: { config: AppConfig, saveConfig:
       }
     }
   }, [monitor2File, monitor2Video, config.monitor2.media_folder])
+
+  // Listen for DMX updates in Listen mode
+  useEffect(() => {
+    if (config.preview !== 'Listen') return
+
+    let unlistenFn: (() => void) | null = null
+
+    const setup = async () => {
+      // Start sACN listener
+      try {
+        await invoke('start_sacn_listener')
+        console.log('sACN listener started successfully')
+      } catch (err) {
+        console.error('Failed to start sACN listener:', err)
+        return
+      }
+
+      // Listen for DMX update events
+      unlistenFn = await listen('dmx-update', (event: any) => {
+        const update = event.payload as DmxUpdate
+        console.log('DMX Update - Ch:', update.channel, 'Val:', update.value)
+
+        // Check Monitor 1 channels
+        const m1ClipCh = config.monitor1.start_channel
+        const m1DimmerCh = config.monitor1.start_channel + 1
+        const m1ModeCh = config.monitor1.start_channel + 2
+
+        // Check Monitor 2 channels
+        const m2ClipCh = config.monitor2.start_channel
+        const m2DimmerCh = config.monitor2.start_channel + 1
+        const m2ModeCh = config.monitor2.start_channel + 2
+
+        // Update Monitor 1
+        if (config.monitor1.enabled) {
+          if (update.channel === m1ClipCh) {
+            console.log('Monitor 1 Video:', update.value)
+            setMonitor1Video(update.value)
+          } else if (update.channel === m1DimmerCh) {
+            console.log('Monitor 1 Dimmer:', update.value)
+            setMonitor1Dimmer(update.value)
+          } else if (update.channel === m1ModeCh) {
+            console.log('Monitor 1 Mode:', update.value)
+            setMonitor1Mode(update.value)
+          }
+        }
+
+        // Update Monitor 2
+        if (config.monitor2.enabled) {
+          if (update.channel === m2ClipCh) {
+            console.log('Monitor 2 Video:', update.value)
+            setMonitor2Video(update.value)
+          } else if (update.channel === m2DimmerCh) {
+            console.log('Monitor 2 Dimmer:', update.value)
+            setMonitor2Dimmer(update.value)
+          } else if (update.channel === m2ModeCh) {
+            console.log('Monitor 2 Mode:', update.value)
+            setMonitor2Mode(update.value)
+          }
+        }
+      })
+      console.log('DMX event listener registered')
+    }
+
+    setup()
+
+    // Cleanup on unmount or mode change
+    return () => {
+      if (unlistenFn) {
+        unlistenFn()
+        console.log('DMX event listener removed')
+      }
+      invoke('stop_sacn_listener')
+        .then(() => console.log('sACN listener stopped'))
+        .catch(err => console.error('Failed to stop sACN listener:', err))
+    }
+  }, [config.preview, config.monitor1.enabled, config.monitor1.start_channel, 
+      config.monitor2.enabled, config.monitor2.start_channel])
 
   return (
     <div className="section">
@@ -1483,13 +2007,36 @@ function PreviewSection({ config, saveConfig }: { config: AppConfig, saveConfig:
                 <span className="preview-filename">
                   {monitor1Video > 0 && monitor1File ? monitor1File : 'No media'}
                 </span>
+                {config.preview === 'Listen' && (
+                  <>
+                    <div className="dmx-values">
+                      <span>Ch {config.monitor1.start_channel}: {monitor1Video}</span>
+                      <span>Ch {config.monitor1.start_channel + 1}: {monitor1Dimmer}</span>
+                      <span>Ch {config.monitor1.start_channel + 2}: {monitor1Mode}</span>
+                    </div>
+                    <label className="output-checkbox">
+                      <input
+                        type="checkbox"
+                        checked={monitor1OutputEnabled}
+                        onChange={(e) => {
+                          console.log('[Monitor 1 Listen] Output checkbox changed to:', e.target.checked)
+                          setMonitor1OutputEnabled(e.target.checked)
+                        }}
+                      />
+                      Output to Display
+                    </label>
+                  </>
+                )}
                 {config.preview === 'Test' && (
                   <>
                     <label className="output-checkbox">
                       <input
                         type="checkbox"
                         checked={monitor1OutputEnabled}
-                        onChange={(e) => setMonitor1OutputEnabled(e.target.checked)}
+                        onChange={(e) => {
+                          console.log('[Monitor 1 Test] Output checkbox changed to:', e.target.checked)
+                          setMonitor1OutputEnabled(e.target.checked)
+                        }}
                       />
                       Output to Display
                     </label>
@@ -1541,6 +2088,23 @@ function PreviewSection({ config, saveConfig }: { config: AppConfig, saveConfig:
                 <span className="preview-filename">
                   {monitor2Video > 0 && monitor2File ? monitor2File : 'No media'}
                 </span>
+                {config.preview === 'Listen' && (
+                  <>
+                    <div className="dmx-values">
+                      <span>Ch {config.monitor2.start_channel}: {monitor2Video}</span>
+                      <span>Ch {config.monitor2.start_channel + 1}: {monitor2Dimmer}</span>
+                      <span>Ch {config.monitor2.start_channel + 2}: {monitor2Mode}</span>
+                    </div>
+                    <label className="output-checkbox">
+                      <input
+                        type="checkbox"
+                        checked={monitor2OutputEnabled}
+                        onChange={(e) => setMonitor2OutputEnabled(e.target.checked)}
+                      />
+                      Output to Display
+                    </label>
+                  </>
+                )}
                 {config.preview === 'Test' && (
                   <>
                     <label className="output-checkbox">
@@ -1558,6 +2122,16 @@ function PreviewSection({ config, saveConfig }: { config: AppConfig, saveConfig:
           )}
         </div>
       </div>
+
+      {/* sACN Test Sender Panel for Preview/Listen Mode */}
+      {config.preview === 'Listen' && (
+        <div className="card">
+          <h3>🧪 sACN Loopback Test</h3>
+          <p className="info">Send test DMX data to channels 1, 2, 3 for testing your preview</p>
+          
+          <SacnTestPanel universe={config.sacn.universe} isListening={false} />
+        </div>
+      )}
     </div>
   )
 }

@@ -4,13 +4,18 @@
 mod config;
 mod media_scanner;
 mod sacn_listener;
+mod sacn_test_sender;
 
-use config::{AppConfig, NetworkInterface};
+use config::{AppConfig, NetworkInterface, DmxUpdate};
+use sacn_listener::SacnListener;
+use sacn_test_sender::SacnTestSender;
 use std::sync::{Arc, Mutex};
-use tauri::State;
+use tauri::{State, Emitter};
 
 struct AppState {
     config: Arc<Mutex<AppConfig>>,
+    sacn_listener: Arc<Mutex<Option<SacnListener>>>,
+    test_sender: Arc<Mutex<Option<SacnTestSender>>>,
 }
 
 #[tauri::command]
@@ -321,6 +326,139 @@ async fn close_output_window(
 }
 
 #[tauri::command]
+fn start_sacn_listener(
+    app_handle: tauri::AppHandle,
+    state: State<AppState>,
+) -> Result<(), String> {
+    let config = state.config.lock().unwrap().clone();
+    let sacn_config = config.sacn.clone();
+    
+    println!("Starting sACN listener:");
+    println!("  Universe: {}", sacn_config.universe);
+    println!("  Mode: {:?}", sacn_config.mode);
+    println!("  Network Interface: {}", if sacn_config.network_interface.is_empty() { 
+        "All interfaces".to_string() 
+    } else { 
+        sacn_config.network_interface.clone() 
+    });
+    
+    let mut listener_guard = state.sacn_listener.lock().unwrap();
+    
+    // Check if already running
+    if let Some(ref listener) = *listener_guard {
+        if listener.is_running() {
+            println!("sACN listener is already running, skipping start");
+            return Err("sACN listener is already running".to_string());
+        }
+    }
+    
+    // Create new listener
+    let mut listener = SacnListener::new(sacn_config);
+    
+    // Start listener with callback that emits events
+    listener.start(move |update: DmxUpdate| {
+        // Emit DMX update event to frontend
+        if let Err(e) = app_handle.emit("dmx-update", &update) {
+            eprintln!("Failed to emit DMX update: {}", e);
+        }
+    })?;
+    
+    *listener_guard = Some(listener);
+    
+    println!("sACN listener started successfully and listening for packets");
+    Ok(())
+}
+
+#[tauri::command]
+fn stop_sacn_listener(state: State<AppState>) -> Result<(), String> {
+    let mut listener_guard = state.sacn_listener.lock().unwrap();
+    
+    if let Some(ref mut listener) = *listener_guard {
+        listener.stop();
+        *listener_guard = None;
+        println!("sACN listener stopped successfully");
+        Ok(())
+    } else {
+        Err("sACN listener is not running".to_string())
+    }
+}
+
+// ========== TEST SENDER COMMANDS ==========
+
+#[tauri::command]
+fn create_test_sender(state: State<AppState>, universe: u16) -> Result<(), String> {
+    let mut sender_guard = state.test_sender.lock().unwrap();
+    
+    if sender_guard.is_some() {
+        return Err("Test sender already exists. Stop it first.".to_string());
+    }
+    
+    let sender = SacnTestSender::new(universe, "MediaPlayer Test")?;
+    *sender_guard = Some(sender);
+    
+    println!("Test sACN sender created for universe {}", universe);
+    Ok(())
+}
+
+#[tauri::command]
+fn stop_test_sender(state: State<AppState>) -> Result<(), String> {
+    let mut sender_guard = state.test_sender.lock().unwrap();
+    
+    if sender_guard.is_none() {
+        return Err("Test sender is not running".to_string());
+    }
+    
+    *sender_guard = None;
+    println!("Test sACN sender stopped");
+    Ok(())
+}
+
+#[tauri::command]
+fn send_test_dmx(
+    state: State<AppState>,
+    channel: u16,
+    value: u8,
+) -> Result<(), String> {
+    let mut sender_guard = state.test_sender.lock().unwrap();
+    
+    let sender = sender_guard.as_mut()
+        .ok_or_else(|| "Test sender not created. Call create_test_sender first.".to_string())?;
+    
+    sender.send_test_data(vec![(channel, value)])
+}
+
+#[tauri::command]
+fn send_test_three_channels(
+    state: State<AppState>,
+    start_channel: u16,
+    clip_value: u8,
+    dimmer_value: u8,
+    playtype_value: u8,
+) -> Result<(), String> {
+    let mut sender_guard = state.test_sender.lock().unwrap();
+    
+    let sender = sender_guard.as_mut()
+        .ok_or_else(|| "Test sender not created. Call create_test_sender first.".to_string())?;
+    
+    sender.send_three_channel_test(start_channel, clip_value, dimmer_value, playtype_value)
+}
+
+#[tauri::command]
+fn send_test_sequence(
+    state: State<AppState>,
+    start_channel: u16,
+    values: Vec<u8>,
+    delay_ms: u64,
+) -> Result<(), String> {
+    let mut sender_guard = state.test_sender.lock().unwrap();
+    
+    let sender = sender_guard.as_mut()
+        .ok_or_else(|| "Test sender not created. Call create_test_sender first.".to_string())?;
+    
+    sender.send_test_sequence(start_channel, values, delay_ms)
+}
+
+#[tauri::command]
 async fn update_output_window(
     app_handle: tauri::AppHandle,
     monitor_id: String,
@@ -366,6 +504,8 @@ fn main() {
     
     let state = AppState {
         config: Arc::new(Mutex::new(config)),
+        sacn_listener: Arc::new(Mutex::new(None)),
+        test_sender: Arc::new(Mutex::new(None)),
     };
     
     tauri::Builder::default()
@@ -383,7 +523,14 @@ fn main() {
             open_output_window,
             close_output_window,
             update_output_window,
-            move_output_window
+            move_output_window,
+            start_sacn_listener,
+            stop_sacn_listener,
+            create_test_sender,
+            stop_test_sender,
+            send_test_dmx,
+            send_test_three_channels,
+            send_test_sequence
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

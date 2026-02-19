@@ -638,6 +638,25 @@ input[type="range"]::-webkit-slider-thumb {
   color: #e0e0e0;
 }
 
+.dmx-values {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  margin-top: 8px;
+  padding: 8px 12px;
+  background-color: rgba(0, 102, 255, 0.1);
+  border-radius: 4px;
+  border: 1px solid rgba(0, 102, 255, 0.3);
+}
+
+.dmx-values span {
+  font-size: 11px;
+  font-family: 'Courier New', monospace;
+  color: #0099ff;
+  letter-spacing: 0.5px;
+}
+
 .output-controls {
   display: flex;
   gap: 8px;
@@ -693,4 +712,242 @@ input[type="range"]::-webkit-slider-thumb {
 
 .content::-webkit-scrollbar-thumb:hover {
   background: #333;
+}
+
+/* DMX Monitor Styles */
+.btn-primary {
+  padding: 10px 20px;
+  background-color: #0066ff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: background-color 0.2s;
+}
+
+.btn-primary:hover {
+  background-color: #0052cc;
+}
+
+.btn-secondary {
+  padding: 10px 20px;
+  background-color: #ff4444;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: background-color 0.2s;
+}
+
+.btn-secondary:hover {
+  background-color: #cc0000;
+}
+
+.dmx-monitor-status {
+  display: flex;
+  gap: 24px;
+  padding: 12px;
+  background-color: rgba(0, 102, 255, 0.1);
+  border-radius: 4px;
+  border: 1px solid rgba(0, 102, 255, 0.3);
+  margin-bottom: 16px;
+  font-size: 13px;
+  color: #a0a0a0;
+}
+
+.dmx-monitor-status span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dmx-channel-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 12px;
+  max-height: 400px;
+  overflow-y: auto;
+  padding: 8px;
+  background-color: #0a0a0a;
+  border-radius: 4px;
+  border: 1px solid #2a2a2a;
+}
+
+.dmx-channel-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  background-color: #1a1a1a;
+  border-radius: 4px;
+  border: 1px solid #2a2a2a;
+}
+
+.dmx-channel-num {
+  font-size: 11px;
+  color: #666;
+  font-weight: 500;
+}
+
+.dmx-channel-value {
+  font-size: 20px;
+  color: #0099ff;
+  font-weight: 600;
+  font-family: 'Courier New', monospace;
+}
+
+.dmx-channel-bar {
+  height: 4px;
+  background-color: #2a2a2a;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.dmx-channel-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #0066ff, #00ccff);
+  transition: width 0.1s ease-out;
+}
+
+.dmx-no-data {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 40px;
+  color: #666;
+  font-size: 14px;
+}
+
+/* Troubleshooting section */
+.troubleshooting-tips {
+  background-color: rgba(255, 165, 0, 0.1);
+  border: 1px solid rgba(255, 165, 0, 0.3);
+  border-radius: 4px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.troubleshooting-tips h4 {
+  color: #ffa500;
+  margin: 0 0 12px 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.troubleshooting-tips ul {
+  margin: 0;
+  padding-left: 20px;
+  color: #a0a0a0;
+  font-size: 13px;
+  line-height: 1.8;
+}
+
+.troubleshooting-tips li {
+  margin-bottom: 8px;
+}
+
+.troubleshooting-tips code {
+  background-color: rgba(0, 0, 0, 0.3);
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-family: 'Courier New', monospace;
+  color: #0099ff;
+  font-size: 12px;
+}
+
+.troubleshooting-tips strong {
+  color: #e0e0e0;
+}
+
+.error-message {
+  background-color: rgba(255, 68, 68, 0.1);
+  border: 1px solid rgba(255, 68, 68, 0.4);
+  border-radius: 4px;
+  padding: 12px 16px;
+  margin: 16px 0;
+  color: #ff6b6b;
+  font-size: 13px;
+}
+
+.error-message strong {
+  color: #ff4444;
+  margin-right: 8px;
+}
+/* Success Message */
+.success-message {
+  background-color: rgba(68, 255, 68, 0.1);
+  border: 1px solid rgba(68, 255, 68, 0.4);
+  border-radius: 4px;
+  padding: 12px 16px;
+  margin: 16px 0;
+  color: #6bff6b;
+  font-size: 13px;
+}
+
+/* Warning Message */
+.warning-message {
+  background-color: rgba(255, 204, 68, 0.1);
+  border: 1px solid rgba(255, 204, 68, 0.4);
+  border-radius: 4px;
+  padding: 12px 16px;
+  margin: 16px 0;
+  color: #ffcc44;
+  font-size: 13px;
+}
+
+/* sACN Test Panel */
+.sacn-test-panel {
+  padding: 4px 0;
+}
+
+.test-panel-header {
+  transition: all 0.2s ease;
+}
+
+.test-panel-header:hover {
+  background: rgba(255, 255, 255, 0.05) !important;
+}
+
+.test-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.test-channel-group {
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.test-channel-group label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.test-channel-group strong {
+  color: #e0e0e0;
+  font-size: 13px;
+}
+
+.quick-tests h4 {
+  color: #a0a0a0;
+  font-size: 13px;
+  margin-bottom: 8px;
+  font-weight: 500;
+}
+
+.quick-tests button {
+  padding: 8px 12px;
+}
+
+/* Override disabled button styles for test panel */
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }

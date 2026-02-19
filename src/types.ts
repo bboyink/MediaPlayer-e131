@@ -64,7 +64,8 @@ export interface MediaFile {
 
 export interface DmxUpdate {
   universe: number;
-  data: number[];
+  channel: number;
+  value: number;
 }
 
 export interface NetworkInterface {
