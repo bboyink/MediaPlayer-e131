@@ -52,6 +52,7 @@ export interface AppConfig {
   layout: LayoutMode;
   preview: PreviewMode;
   production_mode: boolean;
+  presentation_folder: string;
 }
 
 export type MediaType = 'Video' | 'Image';

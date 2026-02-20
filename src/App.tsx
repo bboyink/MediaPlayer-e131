@@ -13,7 +13,7 @@ function App() {
   const [config, setConfig] = useState<AppConfig | null>(null)
   const [networkInterfaces, setNetworkInterfaces] = useState<NetworkInterface[]>([])
   const [availableDisplays, setAvailableDisplays] = useState<DisplayInfo[]>([])
-  const [activeSection, setActiveSection] = useState<'dmx' | 'config' | 'layout' | 'preview'>('dmx')
+  const [activeSection, setActiveSection] = useState<'dmx' | 'config' | 'layout' | 'preview' | 'presentation'>('dmx')
 
   useEffect(() => {
     loadConfig()
@@ -91,6 +91,12 @@ function App() {
         >
           Preview
         </button>
+        <button
+          className={activeSection === 'presentation' ? 'active' : ''}
+          onClick={() => setActiveSection('presentation')}
+        >
+          Presentation
+        </button>
         
         <div className="production-section">
           <button 
@@ -118,6 +124,9 @@ function App() {
         )}
         {activeSection === 'preview' && (
           <PreviewSection config={config} saveConfig={saveConfig} />
+        )}
+        {activeSection === 'presentation' && (
+          <PresentationSection config={config} />
         )}
       </main>
     </div>
@@ -798,6 +807,17 @@ function ConfigSection({
     }
   }
 
+  const browseFolderPresentation = async () => {
+    try {
+      const selected = await invoke<string | null>('select_folder')
+      if (selected) {
+        saveConfig({ ...config, presentation_folder: selected })
+      }
+    } catch (error) {
+      console.error('Error opening folder dialog:', error)
+    }
+  }
+
   return (
     <div className="section">
       <h2>Monitor Configuration</h2>
@@ -1130,6 +1150,25 @@ function ConfigSection({
             <option value="Vertical">Vertical</option>
           </select>
         </label>
+      </div>
+
+      <div className="card">
+        <h3>Presentation Folder</h3>
+        <label>
+          Media Folder:
+          <div className="folder-input-group">
+            <input
+              type="text"
+              value={config.presentation_folder}
+              onChange={(e) => saveConfig({ ...config, presentation_folder: e.target.value })}
+              placeholder="Select a folder for presentation files..."
+            />
+            <button type="button" className="browse-button" onClick={browseFolderPresentation}>
+              Browse
+            </button>
+          </div>
+        </label>
+        <p className="info">Files in this folder will appear in the Presentation panel for drag-and-drop playback.</p>
       </div>
     </div>
   )
@@ -2123,13 +2162,7 @@ function PreviewSection({ config, saveConfig }: { config: AppConfig, saveConfig:
                 )}
               </div>
               <div className="preview-label">
-                <EditableName 
-                  name={config.monitor1.name} 
-                  onSave={(newName) => saveConfig({ 
-                    ...config, 
-                    monitor1: { ...config.monitor1, name: newName } 
-                  })}
-                />
+                <strong>{config.monitor1.name}</strong>
                 <span className="preview-filename">
                   {monitor1Video > 0 && monitor1File ? monitor1File : 'No media'}
                 </span>
@@ -2203,13 +2236,7 @@ function PreviewSection({ config, saveConfig }: { config: AppConfig, saveConfig:
                 )}
               </div>
               <div className="preview-label">
-                <EditableName 
-                  name={config.monitor2.name} 
-                  onSave={(newName) => saveConfig({ 
-                    ...config, 
-                    monitor2: { ...config.monitor2, name: newName } 
-                  })}
-                />
+                <strong>{config.monitor2.name}</strong>
                 <span className="preview-filename">
                   {monitor2Video > 0 && monitor2File ? monitor2File : 'No media'}
                 </span>
@@ -2287,6 +2314,343 @@ function PreviewSection({ config, saveConfig }: { config: AppConfig, saveConfig:
               setMonitor2Mode(m2Mode)
             }}
           />
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Presentation Section Component
+function PresentationSection({ config }: { config: AppConfig }) {
+  const [mediaFiles, setMediaFiles] = useState<string[]>([])
+  const [monitor1Media, setMonitor1Media] = useState<string | null>(null)
+  const [monitor2Media, setMonitor2Media] = useState<string | null>(null)
+  const [monitor1OutputEnabled, setMonitor1OutputEnabled] = useState(false)
+  const [monitor2OutputEnabled, setMonitor2OutputEnabled] = useState(false)
+  const [selectedFile, setSelectedFile] = useState<string | null>(null)
+
+  // Load media files when folder changes
+  useEffect(() => {
+    if (config.presentation_folder) {
+      invoke<string[]>('get_media_files', { folder: config.presentation_folder })
+        .then(files => setMediaFiles(files))
+        .catch(() => setMediaFiles([]))
+    } else {
+      setMediaFiles([])
+    }
+  }, [config.presentation_folder])
+
+  // Handle Monitor 1 output window
+  useEffect(() => {
+    const run = async () => {
+      if (monitor1OutputEnabled && monitor1Media && config.monitor1.enabled) {
+        await invoke('close_output_window', { monitorId: 'monitor1' }).catch(() => {})
+        await invoke('open_output_window', {
+          monitorId: 'monitor1',
+          displayIndex: config.monitor1.display_index,
+          width: config.monitor1.resolution.width,
+          height: config.monitor1.resolution.height,
+          windowX: config.monitor1.window_x,
+          windowY: config.monitor1.window_y
+        }).catch(err => console.error('Failed to open Monitor 1:', err))
+        // Give the window a moment to initialize before sending media
+        await new Promise(r => setTimeout(r, 500))
+        const mediaUrl = convertFileSrc(`${config.presentation_folder}/${monitor1Media}`)
+        await invoke('update_output_window', {
+          monitorId: 'monitor1',
+          mediaUrl,
+          dimmer: 255,
+          playtype: 1,
+          orientation: config.monitor1.orientation
+        }).catch(err => console.error('Failed to update Monitor 1:', err))
+      } else {
+        await invoke('close_output_window', { monitorId: 'monitor1' }).catch(() => {})
+      }
+    }
+    run()
+  }, [monitor1OutputEnabled, monitor1Media, config.monitor1.enabled, config.monitor1.display_index])
+
+  // Handle Monitor 2 output window
+  useEffect(() => {
+    const run = async () => {
+      if (monitor2OutputEnabled && monitor2Media && config.monitor2.enabled) {
+        await invoke('close_output_window', { monitorId: 'monitor2' }).catch(() => {})
+        await invoke('open_output_window', {
+          monitorId: 'monitor2',
+          displayIndex: config.monitor2.display_index,
+          width: config.monitor2.resolution.width,
+          height: config.monitor2.resolution.height,
+          windowX: config.monitor2.window_x,
+          windowY: config.monitor2.window_y
+        }).catch(err => console.error('Failed to open Monitor 2:', err))
+        // Give the window a moment to initialize before sending media
+        await new Promise(r => setTimeout(r, 500))
+        const mediaUrl = convertFileSrc(`${config.presentation_folder}/${monitor2Media}`)
+        await invoke('update_output_window', {
+          monitorId: 'monitor2',
+          mediaUrl,
+          dimmer: 255,
+          playtype: 1,
+          orientation: config.monitor2.orientation
+        }).catch(err => console.error('Failed to update Monitor 2:', err))
+      } else {
+        await invoke('close_output_window', { monitorId: 'monitor2' }).catch(() => {})
+      }
+    }
+    run()
+  }, [monitor2OutputEnabled, monitor2Media, config.monitor2.enabled, config.monitor2.display_index])
+
+  // Clean up output windows on unmount
+  useEffect(() => {
+    return () => {
+      invoke('close_output_window', { monitorId: 'monitor1' }).catch(() => {})
+      invoke('close_output_window', { monitorId: 'monitor2' }).catch(() => {})
+    }
+  }, [])
+
+  const handleMonitor1Click = () => {
+    if (selectedFile) {
+      setMonitor1Media(selectedFile)
+      setMonitor1OutputEnabled(true)
+      setSelectedFile(null)
+    }
+  }
+
+  const handleMonitor2Click = () => {
+    if (selectedFile) {
+      setMonitor2Media(selectedFile)
+      setMonitor2OutputEnabled(true)
+      setSelectedFile(null)
+    }
+  }
+
+  const isVideo = (filename: string) => /\.(mp4|mov|avi|mkv|webm)$/i.test(filename)
+
+  const getMediaUrl = (filename: string) =>
+    convertFileSrc(`${config.presentation_folder}/${filename}`)
+
+  return (
+    <div className="section">
+      <h2>Presentation</h2>
+
+      {!config.presentation_folder ? (
+        <div className="card">
+          <p className="info" style={{ fontSize: '14px', color: '#888' }}>
+            No presentation folder configured. Go to <strong>Configuration</strong> and set a Presentation Folder.
+          </p>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', gap: '24px', alignItems: 'flex-start' }}>
+
+          {/* File List */}
+          <div className="card" style={{ minWidth: '240px', maxWidth: '280px', flex: '0 0 auto' }}>
+            <h3>Media Files</h3>
+            <p className="info">{config.presentation_folder.split(/[\\/]/).pop()}</p>
+            {mediaFiles.length === 0 ? (
+              <p style={{ color: '#666', fontSize: '13px', marginTop: '12px' }}>No media files found</p>
+            ) : (
+              <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '480px', overflowY: 'auto' }}>
+                {mediaFiles.map(file => (
+                  <div
+                    key={file}
+                    onClick={() => setSelectedFile(selectedFile === file ? null : file)}
+                    style={{
+                      padding: '8px 10px',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      fontSize: '13px',
+                      color: selectedFile === file ? '#fff' : '#ccc',
+                      background: selectedFile === file
+                        ? 'rgba(0, 102, 255, 0.3)'
+                        : 'rgba(255,255,255,0.04)',
+                      border: selectedFile === file
+                        ? '1px solid #0066ff'
+                        : '1px solid transparent',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      userSelect: 'none',
+                      transition: 'all 0.15s ease'
+                    }}
+                    onMouseEnter={e => {
+                      if (selectedFile !== file)
+                        (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.08)'
+                    }}
+                    onMouseLeave={e => {
+                      if (selectedFile !== file) 
+                        (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)'
+                    }}
+                  >
+                    <span>{isVideo(file) ? '🎬' : '🖼️'}</span>
+                    <span style={{ wordBreak: 'break-all', lineHeight: '1.3' }}>{file}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Monitor Preview Boxes */}
+          <div style={{ flex: 1 }}>
+            {selectedFile && (
+              <p className="info" style={{ marginBottom: '16px' }}>
+                File selected: <strong style={{ color: '#fff' }}>{selectedFile}</strong> — click a monitor box below to assign it.
+              </p>
+            )}
+            <div className="card">
+              <h3>Presentation Output</h3>
+            <div className={`preview-monitors ${config.layout.toLowerCase()}`}>
+
+              {/* Monitor 1 */}
+              {config.monitor1.enabled && (
+                <div className="preview-monitor">
+                  <div
+                    className={`preview-screen ${config.monitor1.orientation.toLowerCase()}`}
+                    onClick={handleMonitor1Click}
+                    style={{
+                      border: selectedFile
+                        ? '2px solid #00cc44'
+                        : monitor1Media ? '2px solid #0066ff' : '2px dashed #555',
+                      background: selectedFile ? 'rgba(0, 200, 68, 0.07)' : '#000',
+                      transition: 'all 0.15s ease',
+                      cursor: selectedFile ? 'pointer' : 'default'
+                    }}
+                  >
+                    {monitor1Media ? (
+                      <div className="preview-content">
+                        {isVideo(monitor1Media) ? (
+                          <video
+                            key={monitor1Media}
+                            src={getMediaUrl(monitor1Media)}
+                            autoPlay
+                            loop
+                            style={{ width: '100%', height: '100%', objectFit: 'contain', position: 'absolute', top: 0, left: 0 }}
+                          />
+                        ) : (
+                          <img
+                            src={getMediaUrl(monitor1Media)}
+                            alt="Preview"
+                            style={{ width: '100%', height: '100%', objectFit: 'contain', position: 'absolute', top: 0, left: 0 }}
+                          />
+                        )}
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: selectedFile ? '#00cc44' : '#555', fontSize: '13px', gap: '8px' }}>
+                        <span style={{ fontSize: '28px' }}>{selectedFile ? '✓' : '🎬'}</span>
+                        <span>{selectedFile ? 'Click to assign' : 'No file assigned'}</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="preview-label">
+                    <strong>{config.monitor1.name}</strong>
+                    <span className="preview-filename" style={{ minHeight: '18px' }}>
+                      {monitor1Media ?? 'No file'}
+                    </span>
+                    <button
+                      onClick={() => setMonitor1OutputEnabled(v => !v)}
+                      disabled={!monitor1Media}
+                      style={{
+                        marginTop: '10px',
+                        padding: '6px 14px',
+                        background: monitor1OutputEnabled ? '#00aa44' : '#333',
+                        border: monitor1OutputEnabled ? '1px solid #00cc55' : '1px solid #555',
+                        borderRadius: '5px',
+                        color: monitor1OutputEnabled ? '#fff' : '#aaa',
+                        cursor: monitor1Media ? 'pointer' : 'not-allowed',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        width: '100%',
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      {monitor1OutputEnabled ? '● Output Active' : 'Output to Display'}
+                    </button>
+                    {monitor1Media && (
+                      <button onClick={() => { setMonitor1Media(null); setMonitor1OutputEnabled(false) }}
+                        style={{ marginTop: '6px', padding: '4px 12px', background: '#cc2222', border: 'none', borderRadius: '4px', color: '#fff', cursor: 'pointer', fontSize: '12px', width: '100%' }}>
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Monitor 2 */}
+              {config.monitor2.enabled && (
+                <div className="preview-monitor">
+                  <div
+                    className={`preview-screen ${config.monitor2.orientation.toLowerCase()}`}
+                    onClick={handleMonitor2Click}
+                    style={{
+                      border: selectedFile
+                        ? '2px solid #00cc44'
+                        : monitor2Media ? '2px solid #0066ff' : '2px dashed #555',
+                      background: selectedFile ? 'rgba(0, 200, 68, 0.07)' : '#000',
+                      transition: 'all 0.15s ease',
+                      cursor: selectedFile ? 'pointer' : 'default'
+                    }}
+                  >
+                    {monitor2Media ? (
+                      <div className="preview-content">
+                        {isVideo(monitor2Media) ? (
+                          <video
+                            key={monitor2Media}
+                            src={getMediaUrl(monitor2Media)}
+                            autoPlay
+                            loop
+                            style={{ width: '100%', height: '100%', objectFit: 'contain', position: 'absolute', top: 0, left: 0 }}
+                          />
+                        ) : (
+                          <img
+                            src={getMediaUrl(monitor2Media)}
+                            alt="Preview"
+                            style={{ width: '100%', height: '100%', objectFit: 'contain', position: 'absolute', top: 0, left: 0 }}
+                          />
+                        )}
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: selectedFile ? '#00cc44' : '#555', fontSize: '13px', gap: '8px' }}>
+                        <span style={{ fontSize: '28px' }}>{selectedFile ? '✓' : '🎬'}</span>
+                        <span>{selectedFile ? 'Click to assign' : 'No file assigned'}</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="preview-label">
+                    <strong>{config.monitor2.name}</strong>
+                    <span className="preview-filename" style={{ minHeight: '18px' }}>
+                      {monitor2Media ?? 'No file'}
+                    </span>
+                    <button
+                      onClick={() => setMonitor2OutputEnabled(v => !v)}
+                      disabled={!monitor2Media}
+                      style={{
+                        marginTop: '10px',
+                        padding: '6px 14px',
+                        background: monitor2OutputEnabled ? '#00aa44' : '#333',
+                        border: monitor2OutputEnabled ? '1px solid #00cc55' : '1px solid #555',
+                        borderRadius: '5px',
+                        color: monitor2OutputEnabled ? '#fff' : '#aaa',
+                        cursor: monitor2Media ? 'pointer' : 'not-allowed',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        width: '100%',
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      {monitor2OutputEnabled ? '● Output Active' : 'Output to Display'}
+                    </button>
+                    {monitor2Media && (
+                      <button onClick={() => { setMonitor2Media(null); setMonitor2OutputEnabled(false) }}
+                        style={{ marginTop: '6px', padding: '4px 12px', background: '#cc2222', border: 'none', borderRadius: '4px', color: '#fff', cursor: 'pointer', fontSize: '12px', width: '100%' }}>
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+            </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

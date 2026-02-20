@@ -6,6 +6,10 @@
         "npm run tauri": true,
         ".\\setup-dev.bat": true,
         "npx tauri": true,
-        "npm install": true
-    }
+        "npm install": true,
+        "Set-Content": true,
+        "git add": true,
+        "git commit": true
+    },
+    "chat.editor.fontSize": 18
 }
