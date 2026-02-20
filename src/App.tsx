@@ -179,7 +179,7 @@ function App() {
   return (
     <div className="app">
       <nav className="left-nav">
-        <img src="/logo.png" alt="StagePlayer DMX" style={{ width: 'calc(100% + 32px)', marginLeft: '-16px', marginRight: '-16px', marginBottom: '-50px', display: 'block' }} />
+        <img src="/logo.png" alt="StagePlayer DMX" style={{ width: 'calc(100% + 10px)', marginLeft: '-5px', marginRight: '-5px', marginTop: '15px', marginBottom: '15px', display: 'block' }} />
         <button
           className={activeSection === 'dmx' ? 'active' : ''}
           onClick={() => setActiveSection('dmx')}
@@ -2483,6 +2483,21 @@ function PresentationSection({ config }: { config: AppConfig }) {
   const [monitor1OutputEnabled, setMonitor1OutputEnabled] = useState(false)
   const [monitor2OutputEnabled, setMonitor2OutputEnabled] = useState(false)
   const [selectedFile, setSelectedFile] = useState<string | null>(null)
+  const [monitor1MediaReady, setMonitor1MediaReady] = useState<string | null>(null)
+  const [monitor2MediaReady, setMonitor2MediaReady] = useState<string | null>(null)
+
+  // Delay preview video 500ms to stay in sync with output window init
+  useEffect(() => {
+    if (!monitor1Media) { setMonitor1MediaReady(null); return }
+    const t = setTimeout(() => setMonitor1MediaReady(monitor1Media), 500)
+    return () => clearTimeout(t)
+  }, [monitor1Media])
+
+  useEffect(() => {
+    if (!monitor2Media) { setMonitor2MediaReady(null); return }
+    const t = setTimeout(() => setMonitor2MediaReady(monitor2Media), 500)
+    return () => clearTimeout(t)
+  }, [monitor2Media])
 
   // Load media files when folder changes
   useEffect(() => {
@@ -2673,13 +2688,17 @@ function PresentationSection({ config }: { config: AppConfig }) {
                     {monitor1Media ? (
                       <div className="preview-content">
                         {isVideo(monitor1Media) ? (
-                          <video
+                          monitor1MediaReady === monitor1Media ? (
+                            <video
                               key={monitor1Media}
                               src={getMediaUrl(monitor1Media)}
                               autoPlay
                               loop
                               style={{ width: '100%', height: '100%', objectFit: 'contain', position: 'absolute', top: 0, left: 0 }}
                             />
+                          ) : (
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#555', fontSize: '13px' }}>Loading...</div>
+                          )
                         ) : (
                           <img
                             src={getMediaUrl(monitor1Media)}
@@ -2747,13 +2766,17 @@ function PresentationSection({ config }: { config: AppConfig }) {
                     {monitor2Media ? (
                       <div className="preview-content">
                         {isVideo(monitor2Media) ? (
-                          <video
+                          monitor2MediaReady === monitor2Media ? (
+                            <video
                               key={monitor2Media}
                               src={getMediaUrl(monitor2Media)}
                               autoPlay
                               loop
                               style={{ width: '100%', height: '100%', objectFit: 'contain', position: 'absolute', top: 0, left: 0 }}
                             />
+                          ) : (
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#555', fontSize: '13px' }}>Loading...</div>
+                          )
                         ) : (
                           <img
                             src={getMediaUrl(monitor2Media)}

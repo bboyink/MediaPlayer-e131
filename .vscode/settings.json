@@ -9,7 +9,9 @@
         "npm install": true,
         "Set-Content": true,
         "git add": true,
-        "git commit": true
+        "git commit": true,
+        "git tag": true,
+        "rustup": true
     },
     "chat.editor.fontSize": 18
 }
