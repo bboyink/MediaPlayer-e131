@@ -14,6 +14,7 @@ function App() {
   const [networkInterfaces, setNetworkInterfaces] = useState<NetworkInterface[]>([])
   const [availableDisplays, setAvailableDisplays] = useState<DisplayInfo[]>([])
   const [activeSection, setActiveSection] = useState<'dmx' | 'config' | 'layout' | 'preview' | 'presentation'>('dmx')
+  const [productionActive, setProductionActive] = useState(false)
 
   useEffect(() => {
     loadConfig()
@@ -59,6 +60,118 @@ function App() {
     }
   }
 
+  const startProduction = async (cfg: AppConfig) => {
+    if (cfg.monitor1.enabled) {
+      await invoke('close_output_window', { monitorId: 'monitor1' }).catch(() => {})
+      await invoke('open_output_window', {
+        monitorId: 'monitor1',
+        displayIndex: cfg.monitor1.display_index,
+        width: cfg.monitor1.resolution.width,
+        height: cfg.monitor1.resolution.height,
+        windowX: cfg.monitor1.window_x,
+        windowY: cfg.monitor1.window_y
+      }).catch(err => console.error('Failed to open Monitor 1:', err))
+    }
+    if (cfg.monitor2.enabled) {
+      await invoke('close_output_window', { monitorId: 'monitor2' }).catch(() => {})
+      await invoke('open_output_window', {
+        monitorId: 'monitor2',
+        displayIndex: cfg.monitor2.display_index,
+        width: cfg.monitor2.resolution.width,
+        height: cfg.monitor2.resolution.height,
+        windowX: cfg.monitor2.window_x,
+        windowY: cfg.monitor2.window_y
+      }).catch(err => console.error('Failed to open Monitor 2:', err))
+    }
+    setProductionActive(true)
+  }
+
+  const stopProduction = async () => {
+    setProductionActive(false)
+    await invoke('stop_sacn_listener').catch(() => {})
+    await invoke('close_output_window', { monitorId: 'monitor1' }).catch(() => {})
+    await invoke('close_output_window', { monitorId: 'monitor2' }).catch(() => {})
+  }
+
+  // Production DMX state
+  const [prodMonitor1Video, setProdMonitor1Video] = useState(0)
+  const [prodMonitor2Video, setProdMonitor2Video] = useState(0)
+  const [prodMonitor1Dimmer, setProdMonitor1Dimmer] = useState(255)
+  const [prodMonitor2Dimmer, setProdMonitor2Dimmer] = useState(255)
+  const [prodMonitor1Mode, setProdMonitor1Mode] = useState(0)
+  const [prodMonitor2Mode, setProdMonitor2Mode] = useState(0)
+  const [prodMonitor1Files, setProdMonitor1Files] = useState<string[]>([])
+  const [prodMonitor2Files, setProdMonitor2Files] = useState<string[]>([])
+
+  // Load production media file lists
+  useEffect(() => {
+    if (!config) return
+    if (config.monitor1.media_folder) {
+      invoke<string[]>('get_media_files', { folder: config.monitor1.media_folder })
+        .then(files => setProdMonitor1Files(files)).catch(() => {})
+    }
+    if (config.monitor2.media_folder) {
+      invoke<string[]>('get_media_files', { folder: config.monitor2.media_folder })
+        .then(files => setProdMonitor2Files(files)).catch(() => {})
+    }
+  }, [config?.monitor1.media_folder, config?.monitor2.media_folder])
+
+  // sACN listener for production mode
+  useEffect(() => {
+    if (!productionActive || !config) return
+    setProdMonitor1Video(0); setProdMonitor2Video(0)
+    setProdMonitor1Dimmer(255); setProdMonitor2Dimmer(255)
+    setProdMonitor1Mode(0); setProdMonitor2Mode(0)
+    let unlistenFn: (() => void) | null = null
+    const setup = async () => {
+      try { await invoke('start_sacn_listener') } catch (err) { console.error('Failed to start sACN listener:', err); return }
+      unlistenFn = await listen('dmx-update', (event: any) => {
+        const update = event.payload as DmxUpdate
+        if (config.monitor1.enabled) {
+          if (update.channel === config.monitor1.start_channel) setProdMonitor1Video(update.value)
+          else if (update.channel === config.monitor1.start_channel + 1) setProdMonitor1Dimmer(update.value)
+          else if (update.channel === config.monitor1.start_channel + 2) setProdMonitor1Mode(update.value)
+        }
+        if (config.monitor2.enabled) {
+          if (update.channel === config.monitor2.start_channel) setProdMonitor2Video(update.value)
+          else if (update.channel === config.monitor2.start_channel + 1) setProdMonitor2Dimmer(update.value)
+          else if (update.channel === config.monitor2.start_channel + 2) setProdMonitor2Mode(update.value)
+        }
+      })
+    }
+    setup()
+    return () => { unlistenFn?.(); invoke('stop_sacn_listener').catch(() => {}) }
+  }, [productionActive])
+
+  const getProdMediaFile = (dmxValue: number, files: string[]): string | null => {
+    if (dmxValue === 0) return null
+    const padded = dmxValue.toString().padStart(3, '0')
+    return files.find(f => f.startsWith(padded + '_')) || null
+  }
+
+  // Update output windows when DMX values change during production
+  useEffect(() => {
+    if (!productionActive || !config?.monitor1.enabled) return
+    const file = getProdMediaFile(prodMonitor1Video, prodMonitor1Files)
+    const mediaUrl = file ? convertFileSrc(`${config.monitor1.media_folder}/${file}`) : null
+    invoke('update_output_window', { monitorId: 'monitor1', mediaUrl, dimmer: prodMonitor1Dimmer, playtype: prodMonitor1Mode, orientation: config.monitor1.orientation }).catch(() => {})
+  }, [prodMonitor1Video, prodMonitor1Dimmer, prodMonitor1Mode, productionActive])
+
+  useEffect(() => {
+    if (!productionActive || !config?.monitor2.enabled) return
+    const file = getProdMediaFile(prodMonitor2Video, prodMonitor2Files)
+    const mediaUrl = file ? convertFileSrc(`${config.monitor2.media_folder}/${file}`) : null
+    invoke('update_output_window', { monitorId: 'monitor2', mediaUrl, dimmer: prodMonitor2Dimmer, playtype: prodMonitor2Mode, orientation: config.monitor2.orientation }).catch(() => {})
+  }, [prodMonitor2Video, prodMonitor2Dimmer, prodMonitor2Mode, productionActive])
+
+  // ESC to stop production
+  useEffect(() => {
+    if (!productionActive) return
+    const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') stopProduction() }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [productionActive])
+
   if (!config) {
     return <div className="loading">Loading...</div>
   }
@@ -66,7 +179,7 @@ function App() {
   return (
     <div className="app">
       <nav className="left-nav">
-        <h1>StagePlayer 1.0</h1>
+        <img src="/logo.png" alt="StagePlayer DMX" style={{ width: 'calc(100% + 32px)', marginLeft: '-16px', marginRight: '-16px', marginBottom: '-50px', display: 'block' }} />
         <button
           className={activeSection === 'dmx' ? 'active' : ''}
           onClick={() => setActiveSection('dmx')}
@@ -100,10 +213,10 @@ function App() {
         
         <div className="production-section">
           <button 
-            className={config.production_mode ? 'production-active' : 'production-inactive'}
-            onClick={() => saveConfig({ ...config, production_mode: !config.production_mode })}
+            className={productionActive ? 'production-active' : 'production-inactive'}
+            onClick={() => productionActive ? stopProduction() : startProduction(config)}
           >
-            {config.production_mode ? 'Stop Production' : 'Start Production'}
+            {productionActive ? 'Stop Production' : 'Start Production'}
           </button>
         </div>
       </nav>
@@ -567,6 +680,7 @@ function DmxSection({
   const [isListening, setIsListening] = useState(false)
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null)
   const [listenerError, setListenerError] = useState<string | null>(null)
+  const [showAbout, setShowAbout] = useState(false)
 
   // DMX listener for debugging
   useEffect(() => {
@@ -709,7 +823,7 @@ function DmxSection({
         <h3>DMX Monitor</h3>
         <p className="info">Debug incoming DMX data on Universe {config.sacn.universe}</p>
         
-        <div style={{ marginBottom: '16px' }}>
+        <div style={{ marginTop: '20px', marginBottom: '16px' }}>
           {!isListening ? (
             <button onClick={startListener} className="btn-primary">
               Start Monitoring
@@ -763,6 +877,47 @@ function DmxSection({
           </>
         )}
       </div>
+
+      <div className="card" style={{ marginTop: '8px' }}>
+        <button
+          onClick={() => setShowAbout(true)}
+          style={{ width: '100%', padding: '8px 16px', background: '#2a2a2a', border: '1px solid #3a3a3a', borderRadius: '6px', color: '#666', cursor: 'pointer', fontSize: '12px' }}
+        >
+          About StagePlayer DMX
+        </button>
+      </div>
+
+      {showAbout && (
+        <div
+          onClick={() => setShowAbout(false)}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 1000
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: '#1a1a1a', border: '1px solid #333', borderRadius: '12px',
+              padding: '32px 40px', maxWidth: '380px', width: '90%', textAlign: 'center'
+            }}
+          >
+            <img src="/logo.png" alt="StagePlayer DMX" style={{ width: '80%', maxWidth: '280px', marginBottom: '16px' }} />
+            <p style={{ color: '#ccc', fontSize: '14px', lineHeight: '1.7', margin: 0 }}>
+              © 2026 Brad Boyink. All rights reserved.<br />
+              Free for use in schools and community theaters.
+            </p>
+            <button
+              onClick={() => setShowAbout(false)}
+              className="btn-secondary"
+              style={{ marginTop: '24px', padding: '8px 32px' }}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -2519,12 +2674,12 @@ function PresentationSection({ config }: { config: AppConfig }) {
                       <div className="preview-content">
                         {isVideo(monitor1Media) ? (
                           <video
-                            key={monitor1Media}
-                            src={getMediaUrl(monitor1Media)}
-                            autoPlay
-                            loop
-                            style={{ width: '100%', height: '100%', objectFit: 'contain', position: 'absolute', top: 0, left: 0 }}
-                          />
+                              key={monitor1Media}
+                              src={getMediaUrl(monitor1Media)}
+                              autoPlay
+                              loop
+                              style={{ width: '100%', height: '100%', objectFit: 'contain', position: 'absolute', top: 0, left: 0 }}
+                            />
                         ) : (
                           <img
                             src={getMediaUrl(monitor1Media)}
@@ -2593,12 +2748,12 @@ function PresentationSection({ config }: { config: AppConfig }) {
                       <div className="preview-content">
                         {isVideo(monitor2Media) ? (
                           <video
-                            key={monitor2Media}
-                            src={getMediaUrl(monitor2Media)}
-                            autoPlay
-                            loop
-                            style={{ width: '100%', height: '100%', objectFit: 'contain', position: 'absolute', top: 0, left: 0 }}
-                          />
+                              key={monitor2Media}
+                              src={getMediaUrl(monitor2Media)}
+                              autoPlay
+                              loop
+                              style={{ width: '100%', height: '100%', objectFit: 'contain', position: 'absolute', top: 0, left: 0 }}
+                            />
                         ) : (
                           <img
                             src={getMediaUrl(monitor2Media)}

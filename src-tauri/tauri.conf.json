@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2.0",
-  "productName": "MediaPlayer E1.31",
+  "productName": "StagePlayer DMX",
   "version": "0.1.0",
   "identifier": "com.bboyink.mediaplayer-e131",
   "build": {
@@ -24,7 +24,7 @@
   "app": {
     "windows": [
       {
-        "title": "MediaPlayer E1.31 - Control",
+        "title": "StagePlayer DMX - Control",
         "width": 1400,
         "height": 900,
         "minWidth": 1200,

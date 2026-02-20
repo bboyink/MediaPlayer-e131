@@ -1,4 +1,4 @@
-# MediaPlayer E1.31 - Windows Firewall Configuration
+# StagePlayer DMX - Windows Firewall Configuration
 # This script configures Windows Firewall to allow sACN (E1.31) traffic
 # 
 # Usage: Run as Administrator
@@ -9,11 +9,11 @@
 #Requires -RunAsAdministrator
 
 Write-Host "========================================" -ForegroundColor Cyan
-Write-Host "MediaPlayer E1.31 - Firewall Setup" -ForegroundColor Cyan
+Write-Host "StagePlayer DMX - Firewall Setup" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
-$ruleName = "MediaPlayer E1.31 - sACN Listener"
+$ruleName = "StagePlayer DMX - sACN Listener"
 $port = 5568
 $protocol = "UDP"
 
@@ -36,7 +36,7 @@ Write-Host ""
 try {
     New-NetFirewallRule `
         -DisplayName $ruleName `
-        -Description "Allows MediaPlayer E1.31 to receive sACN (E1.31) DMX data over UDP port 5568" `
+        -Description "Allows StagePlayer DMX to receive sACN (E1.31) DMX data over UDP port 5568" `
         -Direction Inbound `
         -Protocol $protocol `
         -LocalPort $port `
@@ -46,7 +46,7 @@ try {
     
     Write-Host "SUCCESS: Firewall rule created successfully!" -ForegroundColor Green
     Write-Host ""
-    Write-Host "MediaPlayer E1.31 can now receive sACN traffic on UDP port $port" -ForegroundColor Cyan
+    Write-Host "StagePlayer DMX can now receive sACN traffic on UDP port $port" -ForegroundColor Cyan
 } catch {
     Write-Host "ERROR: Failed to create firewall rule!" -ForegroundColor Red
     Write-Host $_.Exception.Message -ForegroundColor Red

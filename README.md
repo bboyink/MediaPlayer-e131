@@ -1,4 +1,4 @@
-# MediaPlayer E1.31
+# StagePlayer DMX
 
 sACN (E1.31) driven dual-monitor video playback system built with Tauri 2, React, and Rust.
 

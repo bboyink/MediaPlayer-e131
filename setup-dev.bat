@@ -1,9 +1,9 @@
 @echo off
-REM MediaPlayer E1.31 - Development Setup Script for Windows
+REM StagePlayer DMX - Development Setup Script for Windows
 REM This script sets up the development environment
 
 echo ========================================
-echo MediaPlayer E1.31 - Development Setup
+echo StagePlayer DMX - Development Setup
 echo ========================================
 echo.
 

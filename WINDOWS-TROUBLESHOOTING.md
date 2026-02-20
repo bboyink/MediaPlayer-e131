@@ -40,7 +40,7 @@
 Or manually:
 - Open Windows Defender Firewall
 - Click "Allow an app through firewall"
-- Add exception for MediaPlayer E1.31
+- Add exception for StagePlayer DMX
 - Allow both Private and Public networks
 
 #### 2. Verify Network Adapter

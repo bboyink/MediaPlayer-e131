@@ -1,4 +1,4 @@
-# MediaPlayer E1.31 - Windows Quick Start Guide
+# StagePlayer DMX - Windows Quick Start Guide
 
 ## 🚀 Get Started in 5 Minutes
 
@@ -97,8 +97,8 @@ npm run tauri:build
 ```
 
 **Installers:**
-- `msi\MediaPlayer E1.31_0.1.0_x64_en-US.msi` - For enterprise deployment
-- `nsis\MediaPlayer E1.31_0.1.0_x64-setup.exe` - For end users
+- `msi\StagePlayer DMX_0.1.0_x64_en-US.msi` - For enterprise deployment
+- `nsis\StagePlayer DMX_0.1.0_x64-setup.exe` - For end users
 
 ## 🎯 Common First-Time Issues
 
