@@ -70,6 +70,7 @@ impl Default for SacnConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MonitorConfig {
     pub enabled: bool,
+    pub name: String,
     pub start_channel: u16,
     pub media_folder: PathBuf,
     pub resolution: Resolution,
@@ -83,6 +84,7 @@ impl Default for MonitorConfig {
     fn default() -> Self {
         MonitorConfig {
             enabled: true,
+            name: "Monitor".to_string(),
             start_channel: 1,
             media_folder: PathBuf::new(),
             resolution: Resolution::default(),
@@ -152,10 +154,12 @@ impl Default for AppConfig {
         AppConfig {
             sacn: SacnConfig::default(),
             monitor1: MonitorConfig {
+                name: "Monitor 1".to_string(),
                 start_channel: 1,
                 ..Default::default()
             },
             monitor2: MonitorConfig {
+                name: "Monitor 2".to_string(),
                 start_channel: 10,
                 ..Default::default()
             },

@@ -19,6 +19,7 @@ export interface SacnConfig {
 
 export interface MonitorConfig {
   enabled: boolean;
+  name: string;
   start_channel: number;
   media_folder: string;
   resolution: Resolution;

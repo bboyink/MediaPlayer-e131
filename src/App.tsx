@@ -124,20 +124,156 @@ function App() {
   )
 }
 
-// sACN Test Panel Component
-function SacnTestPanel({ universe, isListening }: { universe: number; isListening: boolean }) {
+// DMX Channel Indicator Component
+function DmxChannelIndicator({ channel, value }: { channel: number; value: number }) {
+  const percentage = (value / 255) * 100
+  
+  return (
+    <div className="dmx-channel-indicator">
+      <div className="dmx-channel-header">
+        <span className="dmx-channel-name">Ch {channel}</span>
+      </div>
+      <div className="dmx-channel-value">{value}</div>
+      <div className="dmx-channel-bar-container">
+        <div 
+          className="dmx-channel-bar-fill" 
+          style={{ width: `${percentage}%` }}
+        />
+      </div>
+    </div>
+  )
+}
+
+// Inline Editable Name Component
+function EditableName({ 
+  name, 
+  onSave 
+}: { 
+  name: string
+  onSave: (newName: string) => void 
+}) {
+  const [isEditing, setIsEditing] = useState(false)
+  const [editValue, setEditValue] = useState(name)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (isEditing && inputRef.current) {
+      inputRef.current.focus()
+      inputRef.current.select()
+    }
+  }, [isEditing])
+
+  const handleSave = () => {
+    if (editValue.trim()) {
+      onSave(editValue.trim())
+    } else {
+      setEditValue(name)
+    }
+    setIsEditing(false)
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleSave()
+    } else if (e.key === 'Escape') {
+      setEditValue(name)
+      setIsEditing(false)
+    }
+  }
+
+  if (isEditing) {
+    return (
+      <input
+        ref={inputRef}
+        type="text"
+        value={editValue}
+        onChange={(e) => setEditValue(e.target.value)}
+        onBlur={handleSave}
+        onKeyDown={handleKeyDown}
+        style={{
+          fontSize: '14px',
+          fontWeight: 'bold',
+          padding: '2px 4px',
+          border: '1px solid #0066ff',
+          borderRadius: '3px',
+          background: '#1a1a1a',
+          color: '#fff',
+          outline: 'none',
+          minWidth: '100px'
+        }}
+      />
+    )
+  }
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+      <strong>{name}</strong>
+      <button
+        onClick={() => {
+          setEditValue(name)
+          setIsEditing(true)
+        }}
+        style={{
+          background: 'rgba(255, 255, 255, 0.1)',
+          border: '1px solid rgba(255, 255, 255, 0.2)',
+          borderRadius: '4px',
+          cursor: 'pointer',
+          padding: '4px 6px',
+          color: '#aaa',
+          fontSize: '14px',
+          display: 'flex',
+          alignItems: 'center',
+          transition: 'all 0.2s',
+          lineHeight: '1'
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = 'rgba(0, 102, 255, 0.2)'
+          e.currentTarget.style.color = '#0066ff'
+          e.currentTarget.style.borderColor = '#0066ff'
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)'
+          e.currentTarget.style.color = '#aaa'
+          e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.2)'
+        }}
+        title="Edit name"
+      >
+        ✏️
+      </button>
+    </div>
+  )
+}
+
+// Preview Test Panel Component with support for both monitors
+function PreviewTestPanel({ 
+  universe, 
+  monitor1Start,
+  monitor1Name,
+  monitor2Start,
+  monitor2Name,
+  onValuesChange 
+}: { 
+  universe: number
+  monitor1Start: number
+  monitor1Name: string
+  monitor2Start: number
+  monitor2Name: string
+  onValuesChange: (monitor1Video: number, monitor1Dimmer: number, monitor1Mode: number, monitor2Video: number, monitor2Dimmer: number, monitor2Mode: number) => void
+}) {
   const [testSenderActive, setTestSenderActive] = useState(false)
-  const [channel1, setChannel1] = useState(100)  // Clip
-  const [channel2, setChannel2] = useState(255)  // Dimmer
-  const [channel3, setChannel3] = useState(1)    // Playtype
+  const [m1Video, setM1Video] = useState(100)
+  const [m1Dimmer, setM1Dimmer] = useState(255)
+  const [m1Mode, setM1Mode] = useState(1)
+  const [m2Video, setM2Video] = useState(100)
+  const [m2Dimmer, setM2Dimmer] = useState(255)
+  const [m2Mode, setM2Mode] = useState(1)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
-  const [isCollapsed, setIsCollapsed] = useState(true)  // Start collapsed
+  const [isCollapsed, setIsCollapsed] = useState(true)
 
   const createTestSender = async () => {
     try {
       setError(null)
-      // Try to stop any existing sender first (in case of state mismatch)
       try {
         await invoke('stop_test_sender')
       } catch {
@@ -167,8 +303,6 @@ function SacnTestPanel({ universe, isListening }: { universe: number; isListenin
   }
 
   const sendTestData = async () => {
-    console.log('sendTestData clicked, testSenderActive:', testSenderActive)
-    
     if (!testSenderActive) {
       setError('Create test sender first!')
       setTimeout(() => setError(null), 3000)
@@ -177,41 +311,23 @@ function SacnTestPanel({ universe, isListening }: { universe: number; isListenin
     
     try {
       setError(null)
-      console.log('Sending test data:', { channel1, channel2, channel3 })
+      // Send data for monitor 1
       await invoke('send_test_three_channels', {
-        startChannel: 1,
-        clipValue: channel1,
-        dimmerValue: channel2,
-        playtypeValue: channel3
+        startChannel: monitor1Start,
+        clipValue: m1Video,
+        dimmerValue: m1Dimmer,
+        playtypeValue: m1Mode
       })
-      setSuccess(`Sent: Ch1=${channel1}, Ch2=${channel2}, Ch3=${channel3}`)
-      setTimeout(() => setSuccess(null), 2000)
-    } catch (err) {
-      console.error('Failed to send test data:', err)
-      setError(String(err))
-    }
-  }
-
-  const sendQuickTest = async (clip: number, dimmer: number, playtype: number) => {
-    if (!testSenderActive) {
-      await createTestSender()
-      // Wait a moment for sender to be ready
-      await new Promise(r => setTimeout(r, 100))
-    }
-    
-    setChannel1(clip)
-    setChannel2(dimmer)
-    setChannel3(playtype)
-    
-    try {
-      setError(null)
+      // Send data for monitor 2
       await invoke('send_test_three_channels', {
-        startChannel: 1,
-        clipValue: clip,
-        dimmerValue: dimmer,
-        playtypeValue: playtype
+        startChannel: monitor2Start,
+        clipValue: m2Video,
+        dimmerValue: m2Dimmer,
+        playtypeValue: m2Mode
       })
-      setSuccess(`Quick test: Ch1=${clip}, Ch2=${dimmer}, Ch3=${playtype}`)
+      // Update the preview values
+      onValuesChange(m1Video, m1Dimmer, m1Mode, m2Video, m2Dimmer, m2Mode)
+      setSuccess(`Sent all channels`)
       setTimeout(() => setSuccess(null), 2000)
     } catch (err) {
       setError(String(err))
@@ -235,176 +351,193 @@ function SacnTestPanel({ universe, isListening }: { universe: number; isListenin
           border: '1px solid rgba(255, 255, 255, 0.1)'
         }}
       >
-        <span style={{ fontWeight: 500, color: '#e0e0e0' }}>
-          {isCollapsed ? '▶' : '▼'} Loopback Test Controls
-        </span>
-        <span style={{ fontSize: '12px', color: '#888' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <span style={{ fontWeight: 500, color: '#e0e0e0' }}>
+            {isCollapsed ? '▶' : '▼'} 🧪 sACN Loopback Test
+          </span>
+          <span style={{ fontSize: '11px', color: '#888' }}>
+            Send test DMX data for both monitors
+          </span>
+        </div>
+        <span style={{ fontSize: '12px', color: '#888', whiteSpace: 'nowrap', marginLeft: '12px' }}>
           {testSenderActive ? '🟢 Active' : '⚫ Inactive'}
         </span>
       </div>
       
       {!isCollapsed && (
         <>
-          {!isListening && (
-            <div className="warning-message" style={{ marginBottom: '12px' }}>
-              ⚠️ Start the DMX Monitor above to see the test data you send
+          <div style={{ marginBottom: '16px' }}>
+            {!testSenderActive ? (
+              <button onClick={createTestSender} className="btn-primary">
+                Create Test Sender
+              </button>
+            ) : (
+              <button onClick={stopTestSender} className="btn-secondary">
+                Stop Test Sender
+              </button>
+            )}
+          </div>
+
+          {error && (
+            <div className="error-message" style={{ marginBottom: '12px' }}>
+              {error}
             </div>
           )}
-          
-          <div style={{ marginBottom: '16px' }}>
-        {!testSenderActive ? (
-          <button onClick={createTestSender} className="btn-primary">
-            Create Test Sender
-          </button>
-        ) : (
-          <button onClick={stopTestSender} className="btn-secondary">
-            Stop Test Sender
-          </button>
-        )}
-        {!testSenderActive && (
-          <div style={{ marginTop: '8px', fontSize: '11px', color: '#888' }}>
-            Having issues? <a 
-              onClick={async () => {
-                try {
-                  await invoke('stop_test_sender')
-                  setTestSenderActive(false)
-                  setSuccess('Forced stop completed')
-                  setTimeout(() => setSuccess(null), 2000)
-                } catch (err) {
-                  setError(String(err))
-                }
-              }}
-              style={{ color: '#4a9eff', cursor: 'pointer', textDecoration: 'underline' }}
-            >
-              Force stop backend sender
-            </a>
+
+          {success && (
+            <div className="success-message" style={{ marginBottom: '12px' }}>
+              ✓ {success}
+            </div>
+          )}
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+            {/* Monitor 1 Controls */}
+            <div>
+              <h4 style={{ marginBottom: '12px', color: '#4a9eff' }}>{monitor1Name} (Ch {monitor1Start}-{monitor1Start + 2})</h4>
+              <div className="test-channel-group">
+                <label>
+                  <strong>Clip</strong>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <input
+                      type="number"
+                      min="0"
+                      max="255"
+                      value={m1Video}
+                      onChange={(e) => setM1Video(parseInt(e.target.value) || 0)}
+                      style={{ width: '80px' }}
+                    />
+                    <input
+                      type="range"
+                      min="0"
+                      max="255"
+                      value={m1Video}
+                      onChange={(e) => setM1Video(parseInt(e.target.value))}
+                      style={{ flex: 1 }}
+                    />
+                  </div>
+                </label>
+              </div>
+
+              <div className="test-channel-group">
+                <label>
+                  <strong>Dimmer</strong>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <input
+                      type="number"
+                      min="0"
+                      max="255"
+                      value={m1Dimmer}
+                      onChange={(e) => setM1Dimmer(parseInt(e.target.value) || 0)}
+                      style={{ width: '80px' }}
+                    />
+                    <input
+                      type="range"
+                      min="0"
+                      max="255"
+                      value={m1Dimmer}
+                      onChange={(e) => setM1Dimmer(parseInt(e.target.value))}
+                      style={{ flex: 1 }}
+                    />
+                  </div>
+                </label>
+              </div>
+
+              <div className="test-channel-group">
+                <label>
+                  <strong>Play Type</strong>
+                  <select 
+                    value={m1Mode} 
+                    onChange={(e) => setM1Mode(parseInt(e.target.value))}
+                    style={{ width: '100%', padding: '8px' }}
+                  >
+                    <option value="0">0 - Stop</option>
+                    <option value="1">1 - Loop</option>
+                    <option value="128">128 - Play Once</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+
+            {/* Monitor 2 Controls */}
+            <div>
+              <h4 style={{ marginBottom: '12px', color: '#4a9eff' }}>{monitor2Name} (Ch {monitor2Start}-{monitor2Start + 2})</h4>
+              <div className="test-channel-group">
+                <label>
+                  <strong>Clip</strong>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <input
+                      type="number"
+                      min="0"
+                      max="255"
+                      value={m2Video}
+                      onChange={(e) => setM2Video(parseInt(e.target.value) || 0)}
+                      style={{ width: '80px' }}
+                    />
+                    <input
+                      type="range"
+                      min="0"
+                      max="255"
+                      value={m2Video}
+                      onChange={(e) => setM2Video(parseInt(e.target.value))}
+                      style={{ flex: 1 }}
+                    />
+                  </div>
+                </label>
+              </div>
+
+              <div className="test-channel-group">
+                <label>
+                  <strong>Dimmer</strong>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <input
+                      type="number"
+                      min="0"
+                      max="255"
+                      value={m2Dimmer}
+                      onChange={(e) => setM2Dimmer(parseInt(e.target.value) || 0)}
+                      style={{ width: '80px' }}
+                    />
+                    <input
+                      type="range"
+                      min="0"
+                      max="255"
+                      value={m2Dimmer}
+                      onChange={(e) => setM2Dimmer(parseInt(e.target.value))}
+                      style={{ flex: 1 }}
+                    />
+                  </div>
+                </label>
+              </div>
+
+              <div className="test-channel-group">
+                <label>
+                  <strong>Play Type</strong>
+                  <select 
+                    value={m2Mode} 
+                    onChange={(e) => setM2Mode(parseInt(e.target.value))}
+                    style={{ width: '100%', padding: '8px' }}
+                  >
+                    <option value="0">0 - Stop</option>
+                    <option value="1">1 - Loop</option>
+                    <option value="128">128 - Play Once</option>
+                  </select>
+                </label>
+              </div>
+            </div>
           </div>
-        )}
-      </div>
 
-      {error && (
-        <div className="error-message" style={{ marginBottom: '12px' }}>
-          {error}
-        </div>
-      )}
-
-      {success && (
-        <div className="success-message" style={{ marginBottom: '12px' }}>
-          ✓ {success}
-        </div>
-      )}
-
-      <div className="test-controls">
-        <div className="test-channel-group">
-          <label>
-            <strong>Channel 1 - Clip</strong>
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-              <input
-                type="number"
-                min="0"
-                max="255"
-                value={channel1}
-                onChange={(e) => setChannel1(parseInt(e.target.value) || 0)}
-                style={{ width: '80px' }}
-              />
-              <input
-                type="range"
-                min="0"
-                max="255"
-                value={channel1}
-                onChange={(e) => setChannel1(parseInt(e.target.value))}
-                style={{ flex: 1 }}
-              />
-            </div>
-          </label>
-        </div>
-
-        <div className="test-channel-group">
-          <label>
-            <strong>Channel 2 - Dimmer</strong>
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-              <input
-                type="number"
-                min="0"
-                max="255"
-                value={channel2}
-                onChange={(e) => setChannel2(parseInt(e.target.value) || 0)}
-                style={{ width: '80px' }}
-              />
-              <input
-                type="range"
-                min="0"
-                max="255"
-                value={channel2}
-                onChange={(e) => setChannel2(parseInt(e.target.value))}
-                style={{ flex: 1 }}
-              />
-            </div>
-          </label>
-        </div>
-
-        <div className="test-channel-group">
-          <label>
-            <strong>Channel 3 - Play Type</strong>
-            <select 
-              value={channel3} 
-              onChange={(e) => setChannel3(parseInt(e.target.value))}
-              style={{ width: '100%', padding: '8px' }}
-            >
-              <option value="0">0 - Stop</option>
-              <option value="1">1 - Play Once</option>
-              <option value="2">2 - Loop</option>
-            </select>
-          </label>
-        </div>
-
-        <button 
-          onClick={sendTestData} 
-          className="btn-primary"
-          style={{ 
-            marginTop: '12px', 
-            width: '100%',
-            opacity: testSenderActive ? 1 : 0.6,
-            cursor: testSenderActive ? 'pointer' : 'not-allowed'
-          }}
-        >
-          Send Test Data {!testSenderActive && '(Create sender first)'}
-        </button>
-      </div>
-
-      <div className="quick-tests" style={{ marginTop: '16px' }}>
-        <h4>Quick Tests:</h4>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
           <button 
-            onClick={() => sendQuickTest(1, 255, 1)}
-            className="btn-secondary"
-            style={{ fontSize: '12px' }}
+            onClick={sendTestData} 
+            className="btn-primary"
+            style={{ 
+              marginTop: '16px', 
+              width: '100%',
+              opacity: testSenderActive ? 1 : 0.6,
+              cursor: testSenderActive ? 'pointer' : 'not-allowed'
+            }}
           >
-            Clip 1 Full Bright
+            Send Test Data {!testSenderActive && '(Create sender first)'}
           </button>
-          <button 
-            onClick={() => sendQuickTest(10, 255, 1)}
-            className="btn-secondary"
-            style={{ fontSize: '12px' }}
-          >
-            Clip 10 Full Bright
-          </button>
-          <button 
-            onClick={() => sendQuickTest(50, 128, 1)}
-            className="btn-secondary"
-            style={{ fontSize: '12px' }}
-          >
-            Clip 50 Half Dim
-          </button>
-          <button 
-            onClick={() => sendQuickTest(100, 255, 2)}
-            className="btn-secondary"
-            style={{ fontSize: '12px' }}
-          >
-            Clip 100 Loop
-          </button>
-        </div>
-      </div>
         </>
       )}
     </div>
@@ -567,27 +700,6 @@ function DmxSection({
         <h3>DMX Monitor</h3>
         <p className="info">Debug incoming DMX data on Universe {config.sacn.universe}</p>
         
-        <div className="troubleshooting-tips">
-          <h4>Troubleshooting Tips:</h4>
-          <ul>
-            <li><strong>Firewall:</strong> Ensure UDP port 5568 is allowed. Run <code>setup-firewall.ps1</code> as Administrator.</li>
-            <li><strong>Universe:</strong> Verify your lighting console is sending to Universe {config.sacn.universe}</li>
-            {config.sacn.mode === 'Multicast' ? (
-              <>
-                <li><strong>Multicast IP:</strong> Universe {config.sacn.universe} = 239.255.{Math.floor(config.sacn.universe / 256)}.{config.sacn.universe % 256}</li>
-                <li><strong>Network:</strong> Ensure your switch supports IGMP multicast routing</li>
-              </>
-            ) : (
-              <>
-                <li><strong>Unicast Mode:</strong> Console must send directly to this computer's IP address</li>
-                <li><strong>IP Address:</strong> {config.sacn.ip_address || 'Configure network interface first'}</li>
-              </>
-            )}
-            <li><strong>Test Tool:</strong> Run <code>.\test-sacn.ps1</code> for testing instructions</li>
-            <li><strong>Check Logs:</strong> Look at the terminal/console for detailed packet reception logs</li>
-          </ul>
-        </div>
-        
         <div style={{ marginBottom: '16px' }}>
           {!isListening ? (
             <button onClick={startListener} className="btn-primary">
@@ -642,14 +754,6 @@ function DmxSection({
           </>
         )}
       </div>
-
-      {/* Test Sender Panel */}
-      <div className="card">
-        <h3>🧪 sACN Loopback Test</h3>
-        <p className="info">Send test DMX data to channels 1, 2, 3 for testing without external hardware</p>
-        
-        <SacnTestPanel universe={config.sacn.universe} isListening={isListening} />
-      </div>
     </div>
   )
 }
@@ -699,7 +803,15 @@ function ConfigSection({
       <h2>Monitor Configuration</h2>
       
       <div className="card">
-        <h3>Monitor 1</h3>
+        <h3>
+          <EditableName 
+            name={config.monitor1.name}
+            onSave={(newName) => saveConfig({
+              ...config,
+              monitor1: { ...config.monitor1, name: newName }
+            })}
+          />
+        </h3>
         <label>
           <input
             type="checkbox"
@@ -856,7 +968,15 @@ function ConfigSection({
       </div>
 
       <div className="card">
-        <h3>Monitor 2</h3>
+        <h3>
+          <EditableName 
+            name={config.monitor2.name}
+            onSave={(newName) => saveConfig({
+              ...config,
+              monitor2: { ...config.monitor2, name: newName }
+            })}
+          />
+        </h3>
         <label>
           <input
             type="checkbox"
@@ -1056,13 +1176,13 @@ function LayoutSection({ config, saveConfig }: { config: AppConfig, saveConfig: 
             <div className="layout-horizontal-side">
               {config.monitor1.enabled && (
                 <div className={`monitor-box ${config.monitor1.orientation}`}>
-                  <span>Monitor 1</span>
+                  <span>{config.monitor1.name}</span>
                   <span className="orientation">{config.monitor1.orientation}</span>
                 </div>
               )}
               {config.monitor2.enabled && (
                 <div className={`monitor-box ${config.monitor2.orientation}`}>
-                  <span>Monitor 2</span>
+                  <span>{config.monitor2.name}</span>
                   <span className="orientation">{config.monitor2.orientation}</span>
                 </div>
               )}
@@ -1072,13 +1192,13 @@ function LayoutSection({ config, saveConfig }: { config: AppConfig, saveConfig: 
             <div className="layout-horizontal-stacked">
               {config.monitor1.enabled && (
                 <div className={`monitor-box ${config.monitor1.orientation}`}>
-                  <span>Monitor 1</span>
+                  <span>{config.monitor1.name}</span>
                   <span className="orientation">{config.monitor1.orientation}</span>
                 </div>
               )}
               {config.monitor2.enabled && (
                 <div className={`monitor-box ${config.monitor2.orientation}`}>
-                  <span>Monitor 2</span>
+                  <span>{config.monitor2.name}</span>
                   <span className="orientation">{config.monitor2.orientation}</span>
                 </div>
               )}
@@ -1088,13 +1208,13 @@ function LayoutSection({ config, saveConfig }: { config: AppConfig, saveConfig: 
             <div className="layout-vertical-side">
               {config.monitor1.enabled && (
                 <div className={`monitor-box ${config.monitor1.orientation}`}>
-                  <span>Monitor 1</span>
+                  <span>{config.monitor1.name}</span>
                   <span className="orientation">{config.monitor1.orientation}</span>
                 </div>
               )}
               {config.monitor2.enabled && (
                 <div className={`monitor-box ${config.monitor2.orientation}`}>
-                  <span>Monitor 2</span>
+                  <span>{config.monitor2.name}</span>
                   <span className="orientation">{config.monitor2.orientation}</span>
                 </div>
               )}
@@ -1104,13 +1224,13 @@ function LayoutSection({ config, saveConfig }: { config: AppConfig, saveConfig: 
             <div className="layout-vertical-stacked">
               {config.monitor1.enabled && (
                 <div className={`monitor-box ${config.monitor1.orientation}`}>
-                  <span>Monitor 1</span>
+                  <span>{config.monitor1.name}</span>
                   <span className="orientation">{config.monitor1.orientation}</span>
                 </div>
               )}
               {config.monitor2.enabled && (
                 <div className={`monitor-box ${config.monitor2.orientation}`}>
-                  <span>Monitor 2</span>
+                  <span>{config.monitor2.name}</span>
                   <span className="orientation">{config.monitor2.orientation}</span>
                 </div>
               )}
@@ -1743,7 +1863,7 @@ function PreviewSection({ config, saveConfig }: { config: AppConfig, saveConfig:
           <div className="test-controls">
             {config.monitor1.enabled && (
               <div className="monitor-controls">
-                <h4>Monitor 1 (Ch {config.monitor1.start_channel})</h4>
+                <h4>{config.monitor1.name} (Ch {config.monitor1.start_channel})</h4>
                 <div className="sliders-group">
                 <div className="vertical-slider-control">
                   <label>Video</label>
@@ -1852,7 +1972,7 @@ function PreviewSection({ config, saveConfig }: { config: AppConfig, saveConfig:
 
             {config.monitor2.enabled && (
               <div className="monitor-controls">
-                <h4>Monitor 2 (Ch {config.monitor2.start_channel})</h4>
+                <h4>{config.monitor2.name} (Ch {config.monitor2.start_channel})</h4>
                 <div className="sliders-group">
                 <div className="vertical-slider-control">
                   <label>Video</label>
@@ -2003,29 +2123,28 @@ function PreviewSection({ config, saveConfig }: { config: AppConfig, saveConfig:
                 )}
               </div>
               <div className="preview-label">
-                <strong>Monitor 1</strong>
+                <EditableName 
+                  name={config.monitor1.name} 
+                  onSave={(newName) => saveConfig({ 
+                    ...config, 
+                    monitor1: { ...config.monitor1, name: newName } 
+                  })}
+                />
                 <span className="preview-filename">
                   {monitor1Video > 0 && monitor1File ? monitor1File : 'No media'}
                 </span>
                 {config.preview === 'Listen' && (
-                  <>
-                    <div className="dmx-values">
-                      <span>Ch {config.monitor1.start_channel}: {monitor1Video}</span>
-                      <span>Ch {config.monitor1.start_channel + 1}: {monitor1Dimmer}</span>
-                      <span>Ch {config.monitor1.start_channel + 2}: {monitor1Mode}</span>
-                    </div>
-                    <label className="output-checkbox">
-                      <input
-                        type="checkbox"
-                        checked={monitor1OutputEnabled}
-                        onChange={(e) => {
-                          console.log('[Monitor 1 Listen] Output checkbox changed to:', e.target.checked)
-                          setMonitor1OutputEnabled(e.target.checked)
-                        }}
-                      />
-                      Output to Display
-                    </label>
-                  </>
+                  <label className="output-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={monitor1OutputEnabled}
+                      onChange={(e) => {
+                        console.log('[Monitor 1 Listen] Output checkbox changed to:', e.target.checked)
+                        setMonitor1OutputEnabled(e.target.checked)
+                      }}
+                    />
+                    Output to Display
+                  </label>
                 )}
                 {config.preview === 'Test' && (
                   <>
@@ -2084,26 +2203,25 @@ function PreviewSection({ config, saveConfig }: { config: AppConfig, saveConfig:
                 )}
               </div>
               <div className="preview-label">
-                <strong>Monitor 2</strong>
+                <EditableName 
+                  name={config.monitor2.name} 
+                  onSave={(newName) => saveConfig({ 
+                    ...config, 
+                    monitor2: { ...config.monitor2, name: newName } 
+                  })}
+                />
                 <span className="preview-filename">
                   {monitor2Video > 0 && monitor2File ? monitor2File : 'No media'}
                 </span>
                 {config.preview === 'Listen' && (
-                  <>
-                    <div className="dmx-values">
-                      <span>Ch {config.monitor2.start_channel}: {monitor2Video}</span>
-                      <span>Ch {config.monitor2.start_channel + 1}: {monitor2Dimmer}</span>
-                      <span>Ch {config.monitor2.start_channel + 2}: {monitor2Mode}</span>
-                    </div>
-                    <label className="output-checkbox">
-                      <input
-                        type="checkbox"
-                        checked={monitor2OutputEnabled}
-                        onChange={(e) => setMonitor2OutputEnabled(e.target.checked)}
-                      />
-                      Output to Display
-                    </label>
-                  </>
+                  <label className="output-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={monitor2OutputEnabled}
+                      onChange={(e) => setMonitor2OutputEnabled(e.target.checked)}
+                    />
+                    Output to Display
+                  </label>
                 )}
                 {config.preview === 'Test' && (
                   <>
@@ -2121,15 +2239,54 @@ function PreviewSection({ config, saveConfig }: { config: AppConfig, saveConfig:
             </div>
           )}
         </div>
+        
+        {/* DMX Channel Display */}
+        <div className="dmx-channel-display">
+          <DmxChannelIndicator 
+            channel={config.monitor1.start_channel} 
+            value={monitor1Video}
+          />
+          <DmxChannelIndicator 
+            channel={config.monitor1.start_channel + 1} 
+            value={monitor1Dimmer}
+          />
+          <DmxChannelIndicator 
+            channel={config.monitor1.start_channel + 2} 
+            value={monitor1Mode}
+          />
+          <DmxChannelIndicator 
+            channel={config.monitor2.start_channel} 
+            value={monitor2Video}
+          />
+          <DmxChannelIndicator 
+            channel={config.monitor2.start_channel + 1} 
+            value={monitor2Dimmer}
+          />
+          <DmxChannelIndicator 
+            channel={config.monitor2.start_channel + 2} 
+            value={monitor2Mode}
+          />
+        </div>
       </div>
 
       {/* sACN Test Sender Panel for Preview/Listen Mode */}
       {config.preview === 'Listen' && (
         <div className="card">
-          <h3>🧪 sACN Loopback Test</h3>
-          <p className="info">Send test DMX data to channels 1, 2, 3 for testing your preview</p>
-          
-          <SacnTestPanel universe={config.sacn.universe} isListening={false} />
+          <PreviewTestPanel 
+            universe={config.sacn.universe} 
+            monitor1Start={config.monitor1.start_channel}
+            monitor1Name={config.monitor1.name}
+            monitor2Start={config.monitor2.start_channel}
+            monitor2Name={config.monitor2.name}
+            onValuesChange={(m1Video, m1Dimmer, m1Mode, m2Video, m2Dimmer, m2Mode) => {
+              setMonitor1Video(m1Video)
+              setMonitor1Dimmer(m1Dimmer)
+              setMonitor1Mode(m1Mode)
+              setMonitor2Video(m2Video)
+              setMonitor2Dimmer(m2Dimmer)
+              setMonitor2Mode(m2Mode)
+            }}
+          />
         </div>
       )}
     </div>
