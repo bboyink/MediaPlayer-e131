@@ -26,3 +26,6 @@ dist-ssr
 
 # Tauri
 src-tauri/target
+
+# Test media files (too large for GitHub)
+Test Files/
