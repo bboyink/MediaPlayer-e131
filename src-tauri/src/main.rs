@@ -628,7 +628,7 @@ fn probe_media(source_path: String) -> Result<(u32, u32), String> {
 }
 
 #[tauri::command]
-async fn split_media(source_path: String, output_folder: String) -> Result<(String, String), String> {
+async fn split_media(source_path: String, top_folder: String, bottom_folder: String) -> Result<(String, String), String> {
     let ffmpeg = find_ffmpeg()
         .ok_or_else(|| "FFmpeg not found. Install from https://ffmpeg.org".to_string())?;
 
@@ -643,9 +643,10 @@ async fn split_media(source_path: String, output_folder: String) -> Result<(Stri
     let ext = src.extension().and_then(|e| e.to_str())
         .unwrap_or("mp4").to_lowercase();
 
-    let out_dir = std::path::Path::new(&output_folder);
-    let top_path    = out_dir.join(format!("{}_top.{}", stem, ext)).to_string_lossy().into_owned();
-    let bottom_path = out_dir.join(format!("{}_bottom.{}", stem, ext)).to_string_lossy().into_owned();
+    let top_path    = std::path::Path::new(&top_folder)
+        .join(format!("{}_top.{}", stem, ext)).to_string_lossy().into_owned();
+    let bottom_path = std::path::Path::new(&bottom_folder)
+        .join(format!("{}_bottom.{}", stem, ext)).to_string_lossy().into_owned();
 
     let is_video = matches!(ext.as_str(), "mp4" | "mov" | "avi" | "mkv" | "webm");
 

@@ -1486,6 +1486,11 @@ function PreviewSection({ config, saveConfig }: { config: AppConfig, saveConfig:
   const [monitor2Video, setMonitor2Video] = useState(0)
   const [monitor2Dimmer, setMonitor2Dimmer] = useState(255)
   const [monitor2Mode, setMonitor2Mode] = useState(0)
+
+  // Link video channels together
+  const [linkedChannels, setLinkedChannels] = useState(false)
+  const setM1Video = (v: number) => { setMonitor1Video(v); if (linkedChannels) setMonitor2Video(v) }
+  const setM2Video = (v: number) => { setMonitor2Video(v); if (linkedChannels) setMonitor1Video(v) }
   
   const [monitor1Files, setMonitor1Files] = useState<string[]>([])
   const [monitor2Files, setMonitor2Files] = useState<string[]>([])
@@ -2090,6 +2095,10 @@ function PreviewSection({ config, saveConfig }: { config: AppConfig, saveConfig:
           >
             Test
           </button>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '12px', fontSize: '13px', color: '#ccc', cursor: 'pointer', userSelect: 'none' }}>
+            <input type="checkbox" checked={linkedChannels} onChange={e => setLinkedChannels(e.target.checked)} />
+            Link
+          </label>
         </div>
 
         {config.preview === 'Test' && (
@@ -2105,7 +2114,7 @@ function PreviewSection({ config, saveConfig }: { config: AppConfig, saveConfig:
                     min="0"
                     max="255"
                     value={monitor1Video}
-                    onChange={(e) => handleValueChange(setMonitor1Video, e.target.value)}
+                    onChange={(e) => handleValueChange(setM1Video, e.target.value)}
                     className="slider-value-input"
                     aria-label="Monitor 1 Video Value"
                   />
@@ -2116,7 +2125,7 @@ function PreviewSection({ config, saveConfig }: { config: AppConfig, saveConfig:
                       max={255}
                       step={1}
                       value={monitor1Video}
-                      onChange={(value) => setMonitor1Video(value as number)}
+                      onChange={(value) => setM1Video(value as number)}
                       trackStyle={{ backgroundColor: '#0066ff', width: 8 }}
                       railStyle={{ backgroundColor: '#3a3a3a', width: 8 }}
                       handleStyle={{
@@ -2214,7 +2223,7 @@ function PreviewSection({ config, saveConfig }: { config: AppConfig, saveConfig:
                     min="0"
                     max="255"
                     value={monitor2Video}
-                    onChange={(e) => handleValueChange(setMonitor2Video, e.target.value)}
+                    onChange={(e) => handleValueChange(setM2Video, e.target.value)}
                     className="slider-value-input"
                     aria-label="Monitor 2 Video Value"
                   />
@@ -2225,7 +2234,7 @@ function PreviewSection({ config, saveConfig }: { config: AppConfig, saveConfig:
                       max={255}
                       step={1}
                       value={monitor2Video}
-                      onChange={(value) => setMonitor2Video(value as number)}
+                      onChange={(value) => setM2Video(value as number)}
                       trackStyle={{ backgroundColor: '#0066ff', width: 8 }}
                       railStyle={{ backgroundColor: '#3a3a3a', width: 8 }}
                       handleStyle={{
@@ -2927,7 +2936,8 @@ function ToolsSection({ config }: { config: AppConfig }) {
     try {
       const [top, bottom] = await invoke<[string, string]>('split_media', {
         sourcePath: fullPath,
-        outputFolder: config.convert_folder
+        topFolder: config.monitor1.media_folder,
+        bottomFolder: config.monitor2.media_folder
       })
       setConvertResult({ top, bottom })
       // Refresh file list
@@ -2942,6 +2952,14 @@ function ToolsSection({ config }: { config: AppConfig }) {
 
   const isSupported = probe?.w === 1080 && probe?.h === 3840
   const ext = selectedFile?.match(/\.([^.]+)$/)?.[1]?.toUpperCase() ?? ''
+
+  function fileIcon(name: string) {
+    const e = name.match(/\.([^.]+)$/)?.[1]?.toLowerCase()
+    if (e === 'mp4' || e === 'mov' || e === 'avi' || e === 'mkv') return '🎬'
+    if (e === 'jpg' || e === 'jpeg') return '🖼️'
+    if (e === 'png') return '🖼️'
+    return '📄'
+  }
 
   return (
     <div className="section">
@@ -2987,7 +3005,7 @@ function ToolsSection({ config }: { config: AppConfig }) {
                       wordBreak: 'break-all',
                     }}
                   >
-                    {f}
+                    <span style={{ marginRight: '6px' }}>{fileIcon(f)}</span>{f}
                   </button>
                 )
               })}
@@ -3021,28 +3039,35 @@ function ToolsSection({ config }: { config: AppConfig }) {
 
               {/* What will be created */}
               {isSupported && (
-                <div style={{ marginBottom: '16px', fontSize: '13px', color: '#aaa', lineHeight: '1.6' }}>
-                  <div>Will create two 1080×1920 {ext} files in the Convert folder:</div>
-                  <div style={{ marginTop: '4px' }}>
+                <div style={{ marginBottom: '16px', fontSize: '13px', color: '#aaa', lineHeight: '1.8' }}>
+                  <div style={{ marginBottom: '4px' }}>Will create two 1080×1920 {ext} files:</div>
+                  <div>
+                    <span style={{ color: '#888' }}>→ {config.monitor1.name} folder: </span>
                     <code style={{ color: '#7cf' }}>{selectedFile.replace(/\.[^.]+$/, '')}_top.{selectedFile.match(/\.([^.]+)$/)?.[1]}</code>
                   </div>
                   <div>
+                    <span style={{ color: '#888' }}>→ {config.monitor2.name} folder: </span>
                     <code style={{ color: '#7cf' }}>{selectedFile.replace(/\.[^.]+$/, '')}_bottom.{selectedFile.match(/\.([^.]+)$/)?.[1]}</code>
                   </div>
+                  {(!config.monitor1.media_folder || !config.monitor2.media_folder) && (
+                    <div style={{ color: '#f88', marginTop: '6px' }}>
+                      ⚠ Set media folders for both monitors in Configuration first.
+                    </div>
+                  )}
                 </div>
               )}
 
               {/* Convert button */}
               <button
                 onClick={doConvert}
-                disabled={!isSupported || converting || !ffmpegOk}
+                disabled={!isSupported || converting || !ffmpegOk || !config.monitor1.media_folder || !config.monitor2.media_folder}
                 style={{
                   padding: '9px 24px',
-                  background: (!isSupported || converting || !ffmpegOk) ? '#333' : '#2a7a2a',
+                  background: (!isSupported || converting || !ffmpegOk || !config.monitor1.media_folder || !config.monitor2.media_folder) ? '#333' : '#2a7a2a',
                   border: 'none',
                   borderRadius: '5px',
-                  color: (!isSupported || converting || !ffmpegOk) ? '#666' : '#fff',
-                  cursor: (!isSupported || converting || !ffmpegOk) ? 'not-allowed' : 'pointer',
+                  color: (!isSupported || converting || !ffmpegOk || !config.monitor1.media_folder || !config.monitor2.media_folder) ? '#666' : '#fff',
+                  cursor: (!isSupported || converting || !ffmpegOk || !config.monitor1.media_folder || !config.monitor2.media_folder) ? 'not-allowed' : 'pointer',
                   fontSize: '14px',
                   fontWeight: 600,
                   marginBottom: '14px',
