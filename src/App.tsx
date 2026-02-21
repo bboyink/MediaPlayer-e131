@@ -13,7 +13,7 @@ function App() {
   const [config, setConfig] = useState<AppConfig | null>(null)
   const [networkInterfaces, setNetworkInterfaces] = useState<NetworkInterface[]>([])
   const [availableDisplays, setAvailableDisplays] = useState<DisplayInfo[]>([])
-  const [activeSection, setActiveSection] = useState<'dmx' | 'config' | 'layout' | 'preview' | 'presentation'>('dmx')
+  const [activeSection, setActiveSection] = useState<'dmx' | 'config' | 'layout' | 'preview' | 'presentation' | 'tools'>('dmx')
   const [productionActive, setProductionActive] = useState(false)
 
   useEffect(() => {
@@ -210,6 +210,12 @@ function App() {
         >
           Presentation
         </button>
+        <button
+          className={activeSection === 'tools' ? 'active' : ''}
+          onClick={() => setActiveSection('tools')}
+        >
+          Tools
+        </button>
         
         <div className="production-section">
           <button 
@@ -240,6 +246,9 @@ function App() {
         )}
         {activeSection === 'presentation' && (
           <PresentationSection config={config} />
+        )}
+        {activeSection === 'tools' && (
+          <ToolsSection config={config} />
         )}
       </main>
     </div>
@@ -973,6 +982,17 @@ function ConfigSection({
     }
   }
 
+  const browseFolderConvert = async () => {
+    try {
+      const selected = await invoke<string | null>('select_folder')
+      if (selected) {
+        saveConfig({ ...config, convert_folder: selected })
+      }
+    } catch (error) {
+      console.error('Error opening folder dialog:', error)
+    }
+  }
+
   return (
     <div className="section">
       <h2>Monitor Configuration</h2>
@@ -1324,6 +1344,25 @@ function ConfigSection({
           </div>
         </label>
         <p className="info">Files in this folder will appear in the Presentation panel for drag-and-drop playback.</p>
+      </div>
+
+      <div className="card">
+        <h3>Convert Folder</h3>
+        <label>
+          Folder:
+          <div className="folder-input-group">
+            <input
+              type="text"
+              value={config.convert_folder}
+              onChange={(e) => saveConfig({ ...config, convert_folder: e.target.value })}
+              placeholder="Select a folder for converted output files..."
+            />
+            <button type="button" className="browse-button" onClick={browseFolderConvert}>
+              Browse
+            </button>
+          </div>
+        </label>
+        <p className="info">Converted video clips will be saved to this folder.</p>
       </div>
     </div>
   )
@@ -2836,3 +2875,199 @@ function PresentationSection({ config }: { config: AppConfig }) {
 }
 
 export default App
+
+// ── Tools Section ─────────────────────────────────────────────────────────────
+function ToolsSection({ config }: { config: AppConfig }) {
+  const [files, setFiles] = useState<string[]>([])
+  const [selectedFile, setSelectedFile] = useState<string | null>(null)
+  const [probe, setProbe] = useState<{ w: number; h: number } | null>(null)
+  const [probeError, setProbeError] = useState('')
+  const [ffmpegOk, setFfmpegOk] = useState<boolean | null>(null)
+  const [ffmpegMsg, setFfmpegMsg] = useState('')
+  const [converting, setConverting] = useState(false)
+  const [convertResult, setConvertResult] = useState<{ top: string; bottom: string } | null>(null)
+  const [convertError, setConvertError] = useState('')
+
+  // Check FFmpeg on mount
+  useEffect(() => {
+    invoke<string>('check_ffmpeg')
+      .then(msg => { setFfmpegOk(true); setFfmpegMsg(msg) })
+      .catch(err => { setFfmpegOk(false); setFfmpegMsg(String(err)) })
+  }, [])
+
+  // Load file list whenever convert_folder changes
+  useEffect(() => {
+    if (!config.convert_folder) { setFiles([]); return }
+    invoke<string[]>('list_convert_files', { folder: config.convert_folder })
+      .then(setFiles)
+      .catch(() => setFiles([]))
+  }, [config.convert_folder])
+
+  async function selectFile(name: string) {
+    setSelectedFile(name)
+    setProbe(null)
+    setProbeError('')
+    setConvertResult(null)
+    setConvertError('')
+    const fullPath = `${config.convert_folder}\\${name}`
+    try {
+      const [w, h] = await invoke<[number, number]>('probe_media', { sourcePath: fullPath })
+      setProbe({ w, h })
+    } catch (err: any) {
+      setProbeError(String(err))
+    }
+  }
+
+  async function doConvert() {
+    if (!selectedFile || !config.convert_folder) return
+    const fullPath = `${config.convert_folder}\\${selectedFile}`
+    setConverting(true)
+    setConvertResult(null)
+    setConvertError('')
+    try {
+      const [top, bottom] = await invoke<[string, string]>('split_media', {
+        sourcePath: fullPath,
+        outputFolder: config.convert_folder
+      })
+      setConvertResult({ top, bottom })
+      // Refresh file list
+      const updated = await invoke<string[]>('list_convert_files', { folder: config.convert_folder })
+      setFiles(updated)
+    } catch (err: any) {
+      setConvertError(String(err))
+    } finally {
+      setConverting(false)
+    }
+  }
+
+  const isSupported = probe?.w === 1080 && probe?.h === 3840
+  const ext = selectedFile?.match(/\.([^.]+)$/)?.[1]?.toUpperCase() ?? ''
+
+  return (
+    <div className="section">
+      <h2>Tools</h2>
+
+      {/* FFmpeg status banner */}
+      {ffmpegOk === false && (
+        <div className="card" style={{ background: '#2a1111', border: '1px solid #552222', marginBottom: '16px' }}>
+          <strong style={{ color: '#f88' }}>⚠ FFmpeg not found</strong>
+          <p style={{ margin: '6px 0 0', fontSize: '13px', color: '#ccc' }}>{ffmpegMsg}</p>
+          <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#ccc' }}>
+            Install via: <code style={{ color: '#7cf' }}>winget install ffmpeg</code>
+          </p>
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start' }}>
+
+        {/* ── File list ── */}
+        <div className="card" style={{ minWidth: '260px', flex: '0 0 260px' }}>
+          <h3>Convert Folder</h3>
+          {!config.convert_folder ? (
+            <p className="info">Set a Convert Folder in Configuration first.</p>
+          ) : files.length === 0 ? (
+            <p className="info">No MP4 / JPG / PNG files found in:<br /><code style={{ fontSize: '11px', wordBreak: 'break-all' }}>{config.convert_folder}</code></p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '480px', overflowY: 'auto' }}>
+              {files.map(f => {
+                const isSelected = f === selectedFile
+                return (
+                  <button
+                    key={f}
+                    onClick={() => selectFile(f)}
+                    style={{
+                      textAlign: 'left',
+                      padding: '7px 10px',
+                      borderRadius: '5px',
+                      border: isSelected ? '1px solid #3a6abf' : '1px solid transparent',
+                      background: isSelected ? '#1a2a4a' : 'transparent',
+                      color: isSelected ? '#fff' : '#ccc',
+                      cursor: 'pointer',
+                      fontSize: '13px',
+                      wordBreak: 'break-all',
+                    }}
+                  >
+                    {f}
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* ── Detail / convert panel ── */}
+        <div style={{ flex: 1 }}>
+          {!selectedFile ? (
+            <div className="card">
+              <p className="info">Select a file from the list to inspect and convert.</p>
+            </div>
+          ) : (
+            <div className="card">
+              <h3 style={{ wordBreak: 'break-all', marginBottom: '12px' }}>{selectedFile}</h3>
+
+              {/* Dimensions */}
+              {probe ? (
+                <div style={{ marginBottom: '14px' }}>
+                  <span style={{ fontSize: '14px' }}>Dimensions: <strong>{probe.w} × {probe.h}</strong></span>
+                  {isSupported
+                    ? <span style={{ marginLeft: '10px', color: '#5f5', fontSize: '13px' }}>✓ 1080×3840 — ready to split</span>
+                    : <span style={{ marginLeft: '10px', color: '#f88', fontSize: '13px' }}>✗ Must be 1080×3840 to split</span>}
+                </div>
+              ) : probeError ? (
+                <p style={{ color: '#f88', fontSize: '13px', marginBottom: '14px' }}>{probeError}</p>
+              ) : (
+                <p style={{ color: '#aaa', fontSize: '13px', marginBottom: '14px' }}>Reading dimensions…</p>
+              )}
+
+              {/* What will be created */}
+              {isSupported && (
+                <div style={{ marginBottom: '16px', fontSize: '13px', color: '#aaa', lineHeight: '1.6' }}>
+                  <div>Will create two 1080×1920 {ext} files in the Convert folder:</div>
+                  <div style={{ marginTop: '4px' }}>
+                    <code style={{ color: '#7cf' }}>{selectedFile.replace(/\.[^.]+$/, '')}_top.{selectedFile.match(/\.([^.]+)$/)?.[1]}</code>
+                  </div>
+                  <div>
+                    <code style={{ color: '#7cf' }}>{selectedFile.replace(/\.[^.]+$/, '')}_bottom.{selectedFile.match(/\.([^.]+)$/)?.[1]}</code>
+                  </div>
+                </div>
+              )}
+
+              {/* Convert button */}
+              <button
+                onClick={doConvert}
+                disabled={!isSupported || converting || !ffmpegOk}
+                style={{
+                  padding: '9px 24px',
+                  background: (!isSupported || converting || !ffmpegOk) ? '#333' : '#2a7a2a',
+                  border: 'none',
+                  borderRadius: '5px',
+                  color: (!isSupported || converting || !ffmpegOk) ? '#666' : '#fff',
+                  cursor: (!isSupported || converting || !ffmpegOk) ? 'not-allowed' : 'pointer',
+                  fontSize: '14px',
+                  fontWeight: 600,
+                  marginBottom: '14px',
+                }}
+              >
+                {converting ? 'Converting…' : 'Convert'}
+              </button>
+
+              {/* Result */}
+              {convertResult && (
+                <div style={{ color: '#5f5', fontSize: '13px', lineHeight: '1.7' }}>
+                  ✓ Done!<br />
+                  <code style={{ color: '#7cf' }}>{convertResult.top.split(/[\\/]/).pop()}</code><br />
+                  <code style={{ color: '#7cf' }}>{convertResult.bottom.split(/[\\/]/).pop()}</code>
+                </div>
+              )}
+              {convertError && (
+                <div style={{ color: '#f88', fontSize: '13px', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                  {convertError}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}

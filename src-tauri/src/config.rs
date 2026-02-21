@@ -148,6 +148,8 @@ pub struct AppConfig {
     pub preview: PreviewMode,
     pub production_mode: bool,
     pub presentation_folder: PathBuf,
+    #[serde(default)]
+    pub convert_folder: PathBuf,
 }
 
 impl Default for AppConfig {
@@ -168,6 +170,7 @@ impl Default for AppConfig {
             preview: PreviewMode::default(),
             production_mode: false,
             presentation_folder: PathBuf::new(),
+            convert_folder: PathBuf::new(),
         }
     }
 }

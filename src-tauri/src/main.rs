@@ -495,6 +495,184 @@ async fn update_output_window(
     Ok(())
 }
 
+// ── FFmpeg helpers ────────────────────────────────────────────────────────────
+
+fn find_ffmpeg() -> Option<String> {
+    if std::process::Command::new("ffmpeg").arg("-version").output().is_ok() {
+        return Some("ffmpeg".to_string());
+    }
+    let mut candidates = vec![
+        r"C:\ffmpeg\bin\ffmpeg.exe".to_string(),
+        r"C:\Program Files\ffmpeg\bin\ffmpeg.exe".to_string(),
+        r"C:\Program Files (x86)\ffmpeg\bin\ffmpeg.exe".to_string(),
+        r"C:\ProgramData\chocolatey\bin\ffmpeg.exe".to_string(),
+        r"C:\tools\ffmpeg\bin\ffmpeg.exe".to_string(),
+    ];
+    if let Ok(profile) = std::env::var("USERPROFILE") {
+        candidates.push(format!(r"{}\scoop\apps\ffmpeg\current\bin\ffmpeg.exe", profile));
+    }
+    for c in &candidates {
+        if std::path::Path::new(c.as_str()).exists() {
+            return Some(c.clone());
+        }
+    }
+    if let Ok(local) = std::env::var("LOCALAPPDATA") {
+        let winget_base = std::path::Path::new(&local)
+            .join("Microsoft").join("WinGet").join("Packages");
+        if let Ok(entries) = std::fs::read_dir(&winget_base) {
+            for entry in entries.flatten() {
+                if entry.file_name().to_string_lossy().starts_with("Gyan.FFmpeg") {
+                    if let Ok(inner) = std::fs::read_dir(entry.path()) {
+                        for ie in inner.flatten() {
+                            let bin = ie.path().join("bin").join("ffmpeg.exe");
+                            if bin.exists() { return Some(bin.to_string_lossy().into_owned()); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+fn find_ffprobe() -> Option<String> {
+    if std::process::Command::new("ffprobe").arg("-version").output().is_ok() {
+        return Some("ffprobe".to_string());
+    }
+    let mut candidates = vec![
+        r"C:\ffmpeg\bin\ffprobe.exe".to_string(),
+        r"C:\Program Files\ffmpeg\bin\ffprobe.exe".to_string(),
+        r"C:\Program Files (x86)\ffmpeg\bin\ffprobe.exe".to_string(),
+        r"C:\ProgramData\chocolatey\bin\ffprobe.exe".to_string(),
+        r"C:\tools\ffmpeg\bin\ffprobe.exe".to_string(),
+    ];
+    if let Ok(profile) = std::env::var("USERPROFILE") {
+        candidates.push(format!(r"{}\scoop\apps\ffmpeg\current\bin\ffprobe.exe", profile));
+    }
+    for c in &candidates {
+        if std::path::Path::new(c.as_str()).exists() {
+            return Some(c.clone());
+        }
+    }
+    if let Ok(local) = std::env::var("LOCALAPPDATA") {
+        let winget_base = std::path::Path::new(&local)
+            .join("Microsoft").join("WinGet").join("Packages");
+        if let Ok(entries) = std::fs::read_dir(&winget_base) {
+            for entry in entries.flatten() {
+                if entry.file_name().to_string_lossy().starts_with("Gyan.FFmpeg") {
+                    if let Ok(inner) = std::fs::read_dir(entry.path()) {
+                        for ie in inner.flatten() {
+                            let bin = ie.path().join("bin").join("ffprobe.exe");
+                            if bin.exists() { return Some(bin.to_string_lossy().into_owned()); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+#[tauri::command]
+fn check_ffmpeg() -> Result<String, String> {
+    match (find_ffmpeg(), find_ffprobe()) {
+        (Some(_), Some(_)) => Ok("FFmpeg found".to_string()),
+        (None, _) => Err("FFmpeg not found. Run: winget install ffmpeg".to_string()),
+        (_, None) => Err("FFprobe not found. Reinstall FFmpeg.".to_string()),
+    }
+}
+
+#[tauri::command]
+fn list_convert_files(folder: String) -> Result<Vec<String>, String> {
+    let path = std::path::Path::new(&folder);
+    if !path.exists() || !path.is_dir() {
+        return Ok(Vec::new());
+    }
+    let mut files: Vec<String> = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(path) {
+        for entry in entries.flatten() {
+            if entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
+                if let Some(name) = entry.file_name().to_str() {
+                    let ext = std::path::Path::new(name)
+                        .extension().and_then(|e| e.to_str())
+                        .unwrap_or("").to_lowercase();
+                    if matches!(ext.as_str(), "mp4" | "jpg" | "jpeg" | "png") {
+                        files.push(name.to_string());
+                    }
+                }
+            }
+        }
+    }
+    files.sort();
+    Ok(files)
+}
+
+#[tauri::command]
+fn probe_media(source_path: String) -> Result<(u32, u32), String> {
+    let ffprobe = find_ffprobe()
+        .ok_or_else(|| "FFprobe not found. Install FFmpeg from https://ffmpeg.org".to_string())?;
+    let output = std::process::Command::new(&ffprobe)
+        .args(["-v", "error", "-select_streams", "v:0",
+               "-show_entries", "stream=width,height",
+               "-of", "csv=p=0", &source_path])
+        .output()
+        .map_err(|e| format!("Failed to run ffprobe: {}", e))?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parts: Vec<&str> = stdout.trim().split(',').collect();
+    if parts.len() < 2 {
+        return Err(format!("Could not read dimensions from file. (ffprobe output: '{}')", stdout.trim()));
+    }
+    let w = parts[0].trim().parse::<u32>().map_err(|_| format!("Bad width value: '{}'", parts[0]))?;
+    let h = parts[1].trim().parse::<u32>().map_err(|_| format!("Bad height value: '{}'", parts[1]))?;
+    Ok((w, h))
+}
+
+#[tauri::command]
+async fn split_media(source_path: String, output_folder: String) -> Result<(String, String), String> {
+    let ffmpeg = find_ffmpeg()
+        .ok_or_else(|| "FFmpeg not found. Install from https://ffmpeg.org".to_string())?;
+
+    let (w, h) = probe_media(source_path.clone())?;
+    if w != 1080 || h != 3840 {
+        return Err(format!("File dimensions are {}×{} — only 1080×3840 is supported.", w, h));
+    }
+
+    let src = std::path::Path::new(&source_path);
+    let stem = src.file_stem().and_then(|s| s.to_str())
+        .ok_or_else(|| "Cannot determine file name".to_string())?;
+    let ext = src.extension().and_then(|e| e.to_str())
+        .unwrap_or("mp4").to_lowercase();
+
+    let out_dir = std::path::Path::new(&output_folder);
+    let top_path    = out_dir.join(format!("{}_top.{}", stem, ext)).to_string_lossy().into_owned();
+    let bottom_path = out_dir.join(format!("{}_bottom.{}", stem, ext)).to_string_lossy().into_owned();
+
+    let is_video = matches!(ext.as_str(), "mp4" | "mov" | "avi" | "mkv" | "webm");
+
+    for (offset_y, out_path) in [("0", &top_path), ("1920", &bottom_path)] {
+        let crop = format!("crop=1080:1920:0:{}", offset_y);
+        let mut args: Vec<&str> = vec!["-y", "-i", &source_path];
+        if is_video {
+            args.extend(["-filter:v", &crop, "-c:a", "copy"]);
+        } else {
+            args.extend(["-vf", &crop]);
+        }
+        args.push(out_path.as_str());
+
+        let result = std::process::Command::new(&ffmpeg)
+            .args(&args)
+            .output()
+            .map_err(|e| format!("Failed to run ffmpeg: {}", e))?;
+
+        if !result.status.success() {
+            let stderr = String::from_utf8_lossy(&result.stderr);
+            return Err(format!("FFmpeg error: {}", &stderr[stderr.len().saturating_sub(500)..].trim()));
+        }
+    }
+
+    Ok((top_path, bottom_path))
+}
+
 fn main() {
     // Load configuration from file or create default
     let config = AppConfig::load().unwrap_or_else(|e| {
@@ -530,7 +708,11 @@ fn main() {
             stop_test_sender,
             send_test_dmx,
             send_test_three_channels,
-            send_test_sequence
+            send_test_sequence,
+            check_ffmpeg,
+            list_convert_files,
+            probe_media,
+            split_media
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

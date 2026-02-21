@@ -21,5 +21,9 @@ commands.allow = [
   "stop_test_sender",
   "send_test_dmx",
   "send_test_three_channels",
-  "send_test_sequence"
+  "send_test_sequence",
+  "check_ffmpeg",
+  "list_convert_files",
+  "probe_media",
+  "split_media"
 ]
