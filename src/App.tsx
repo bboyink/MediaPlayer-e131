@@ -172,6 +172,17 @@ function App() {
     return () => window.removeEventListener('keydown', handleKey)
   }, [productionActive])
 
+  // Video channel 255 = close that monitor's output window
+  useEffect(() => {
+    if (!productionActive) return
+    if (prodMonitor1Video === 255) invoke('close_output_window', { monitorId: 'monitor1' }).catch(() => {})
+  }, [prodMonitor1Video, productionActive])
+
+  useEffect(() => {
+    if (!productionActive) return
+    if (prodMonitor2Video === 255) invoke('close_output_window', { monitorId: 'monitor2' }).catch(() => {})
+  }, [prodMonitor2Video, productionActive])
+
   if (!config) {
     return <div className="loading">Loading...</div>
   }
