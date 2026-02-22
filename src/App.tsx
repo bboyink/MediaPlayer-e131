@@ -152,6 +152,7 @@ function App() {
   // Update output windows when DMX values change during production
   useEffect(() => {
     if (!productionActive || !config?.monitor1.enabled) return
+    if (prodMonitor1Video === 255) return // handled by close_output_window effect below
     const file = getProdMediaFile(prodMonitor1Video, prodMonitor1Files)
     const mediaUrl = file ? convertFileSrc(`${config.monitor1.media_folder}/${file}`) : null
     invoke('update_output_window', { monitorId: 'monitor1', mediaUrl, dimmer: prodMonitor1Dimmer, playtype: prodMonitor1Mode, orientation: config.monitor1.orientation }).catch(() => {})
@@ -159,6 +160,7 @@ function App() {
 
   useEffect(() => {
     if (!productionActive || !config?.monitor2.enabled) return
+    if (prodMonitor2Video === 255) return // handled by close_output_window effect below
     const file = getProdMediaFile(prodMonitor2Video, prodMonitor2Files)
     const mediaUrl = file ? convertFileSrc(`${config.monitor2.media_folder}/${file}`) : null
     invoke('update_output_window', { monitorId: 'monitor2', mediaUrl, dimmer: prodMonitor2Dimmer, playtype: prodMonitor2Mode, orientation: config.monitor2.orientation }).catch(() => {})
