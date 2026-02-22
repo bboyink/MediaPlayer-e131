@@ -344,12 +344,15 @@ fn start_sacn_listener(
     
     let mut listener_guard = state.sacn_listener.lock().unwrap();
     
-    // Check if already running
-    if let Some(ref listener) = *listener_guard {
-        if listener.is_running() {
-            println!("sACN listener is already running, skipping start");
-            return Err("sACN listener is already running".to_string());
-        }
+    // Take any existing listener out so we can stop it OUTSIDE the mutex.
+    // Calling join() while holding the mutex can deadlock if the listener
+    // thread is blocked in app_handle.emit() which may re-enter Tauri internals.
+    let old_listener = listener_guard.take();
+    drop(listener_guard); // release mutex before stopping old listener
+    
+    if let Some(mut old) = old_listener {
+        println!("Stopping existing listener before restarting...");
+        old.stop();
     }
     
     // Create new listener
@@ -363,7 +366,7 @@ fn start_sacn_listener(
         }
     })?;
     
-    *listener_guard = Some(listener);
+    *state.sacn_listener.lock().unwrap() = Some(listener);
     
     println!("sACN listener started successfully and listening for packets");
     Ok(())
@@ -371,11 +374,13 @@ fn start_sacn_listener(
 
 #[tauri::command]
 fn stop_sacn_listener(state: State<AppState>) -> Result<(), String> {
-    let mut listener_guard = state.sacn_listener.lock().unwrap();
+    // Take the listener out of the Option and release the mutex BEFORE calling
+    // stop()/join(). Holding the mutex during join() can deadlock if the
+    // listener thread is blocked in app_handle.emit().
+    let listener = state.sacn_listener.lock().unwrap().take();
     
-    if let Some(ref mut listener) = *listener_guard {
+    if let Some(mut listener) = listener {
         listener.stop();
-        *listener_guard = None;
         println!("sACN listener stopped successfully");
         Ok(())
     } else {

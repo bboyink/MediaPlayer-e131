@@ -8,6 +8,7 @@ use sacn::receive::SacnReceiver;
 pub struct SacnListener {
     config: SacnConfig,
     running: Arc<Mutex<bool>>,
+    thread_handle: Option<std::thread::JoinHandle<()>>,
 }
 
 impl SacnListener {
@@ -15,6 +16,7 @@ impl SacnListener {
         Self {
             config,
             running: Arc::new(Mutex::new(false)),
+            thread_handle: None,
         }
     }
     
@@ -26,53 +28,73 @@ impl SacnListener {
         let universe = self.config.universe;
         let mode = self.config.mode.clone();
         let unicast_ip = self.config.unicast_ip.clone();
+        let ip_address = self.config.ip_address.clone();
         
         println!("=== sACN Listener Starting ===");
         println!("Universe: {}", universe);
         println!("Mode: {:?}", mode);
         println!("Port: {}", ACN_SDT_MULTICAST_PORT);
         
-        // Create receiver - bind to all interfaces 0.0.0.0:5568
-        let bind_addr = SocketAddr::from(([0, 0, 0, 0], ACN_SDT_MULTICAST_PORT));
-        println!("Binding to: {}", bind_addr);
-        
-        let mut receiver = SacnReceiver::with_ip(bind_addr, None)
-            .map_err(|e| {
-                let err_msg = format!("Failed to bind to {}: {}. Is another application using port 5568?", bind_addr, e);
-                eprintln!("{}", err_msg);
-                err_msg
-            })?;
-        
-        println!("Socket created successfully on port {}", ACN_SDT_MULTICAST_PORT);
-        
-        // Configure based on mode
-        match mode {
+        // Create and configure receiver based on mode
+        let mut receiver = match mode {
             SacnMode::Multicast => {
-                println!("Joining multicast group for universe {}", universe);
-                receiver.listen_universes(&[universe])
+                // Use the configured IP address for the bind/multicast-join interface.
+                // Binding to a specific interface IP (e.g. 192.168.0.175) is required on
+                // Windows when there are multiple NICs so the OS joins the right multicast group.
+                // Fall back to 0.0.0.0 if none is configured.
+                let bind_ip: IpAddr = if !ip_address.is_empty() && ip_address != "0.0.0.0" {
+                    ip_address.parse()
+                        .map_err(|e| format!("Invalid ip_address '{}': {}", ip_address, e))?
+                } else {
+                    IpAddr::from([0, 0, 0, 0])
+                };
+                let bind_addr = SocketAddr::new(bind_ip, ACN_SDT_MULTICAST_PORT);
+                println!("Multicast: binding to {}", bind_addr);
+                
+                let mut rcv = SacnReceiver::with_ip(bind_addr, None)
                     .map_err(|e| {
-                        let err_msg = format!("Failed to join multicast for universe {}: {}", universe, e);
-                        eprintln!("{}", err_msg);
-                        err_msg
+                        let msg = format!("Failed to bind to {}: {}. Is another application using port 5568?", bind_addr, e);
+                        eprintln!("{}", msg);
+                        msg
                     })?;
-                println!("Successfully joined multicast group for universe {}", universe);
+                
+                println!("Joining multicast group for universe {}", universe);
+                rcv.listen_universes(&[universe])
+                    .map_err(|e| {
+                        let msg = format!("Failed to join multicast for universe {}: {}", universe, e);
+                        eprintln!("{}", msg);
+                        msg
+                    })?;
+                println!("Successfully joined multicast group for universe {} on {}", universe, bind_addr);
+                rcv
             }
             SacnMode::Unicast => {
-                if !unicast_ip.is_empty() {
-                    println!("Configuring unicast mode for IP: {}", unicast_ip);
-                    let ip: IpAddr = unicast_ip.parse()
-                        .map_err(|e| format!("Invalid IP address '{}': {}", unicast_ip, e))?;
-                    let addr = SocketAddr::new(ip, ACN_SDT_MULTICAST_PORT);
-                    receiver = SacnReceiver::with_ip(addr, None)
-                        .map_err(|e| format!("Failed to create unicast receiver on {}: {}", addr, e))?;
-                    receiver.listen_universes(&[universe])
-                        .map_err(|e| format!("Failed to listen unicast on universe {}: {}", universe, e))?;
-                    println!("Successfully configured unicast listener on {}", addr);
-                } else {
-                    return Err("Unicast mode requires IP address".to_string());
+                if unicast_ip.is_empty() {
+                    return Err("Unicast mode requires an IP address".to_string());
                 }
+                // For unicast, bind to 0.0.0.0 so we receive data sent to our IP on any interface.
+                // The sACN controller just sends a normal UDP packet directly to our IP:5568.
+                let bind_addr = SocketAddr::from(([0, 0, 0, 0], ACN_SDT_MULTICAST_PORT));
+                println!("Unicast: binding to {} (receiving unicast from {})", bind_addr, unicast_ip);
+                
+                let mut rcv = SacnReceiver::with_ip(bind_addr, None)
+                    .map_err(|e| {
+                        let msg = format!("Failed to bind to {}: {}. Is another application using port 5568?", bind_addr, e);
+                        eprintln!("{}", msg);
+                        msg
+                    })?;
+                
+                // Disable multicast (we don't need it for unicast) to avoid errors on
+                // machines where multicast isn't available.
+                let _ = rcv.set_is_multicast_enabled(false);
+                
+                // Still need to register the universe so the receiver knows to process it
+                rcv.listen_universes(&[universe])
+                    .map_err(|e| format!("Failed to register universe {}: {}", universe, e))?;
+                println!("Unicast listener ready on port {}", ACN_SDT_MULTICAST_PORT);
+                rcv
             }
-        }
+        };
         
         let running = Arc::clone(&self.running);
         *running.lock().unwrap() = true;
@@ -80,7 +102,7 @@ impl SacnListener {
         let running_clone = Arc::clone(&running);
         
         // Spawn listening thread
-        std::thread::spawn(move || {
+        let handle = std::thread::spawn(move || {
             println!("Listener thread started, entering receive loop...");
             let mut packet_count = 0;
             let mut last_log_time = std::time::Instant::now();
@@ -111,10 +133,11 @@ impl SacnListener {
                                 println!("sACN packet MATCHED on universe {}, {} channels", universe, packet.values.len());
                                 // Only process channels that are actually used (skip trailing zeros)
                                 // Find the highest non-zero channel to avoid processing all 512 channels
+                                // packet.values[0] is the DMX start code; channel N is at index N
                                 let mut max_channel = 0;
-                                for (i, &val) in packet.values.iter().enumerate() {
+                                for (i, &val) in packet.values.iter().enumerate().skip(1) {
                                     if val > 0 {
-                                        max_channel = i + 1;
+                                        max_channel = i; // index == channel number
                                     }
                                 }
                                 
@@ -124,8 +147,9 @@ impl SacnListener {
                                 println!("Processing {} channels (highest non-zero: {})", channels_to_process, max_channel);
                                 
                                 // Process only relevant DMX channels
+                                // Skip index 0 (start code); channel N lives at packet.values[N]
                                 for channel in 1..=channels_to_process {
-                                    let value = packet.values.get(channel - 1).copied().unwrap_or(0);
+                                    let value = packet.values.get(channel).copied().unwrap_or(0);
                                     let update = DmxUpdate {
                                         universe,
                                         channel: channel as u16,
@@ -158,15 +182,20 @@ impl SacnListener {
             }
         });
         
+        // Store handle so stop() can join it
+        self.thread_handle = Some(handle);
+        
         Ok(())
     }
     
     pub fn stop(&mut self) {
         *self.running.lock().unwrap() = false;
-    }
-    
-    pub fn is_running(&self) -> bool {
-        *self.running.lock().unwrap()
+        // Wait for the listener thread to fully exit so the socket is released.
+        // Caller must NOT hold any mutexes that the listener thread might also
+        // need (e.g. the outer sacn_listener mutex), otherwise join() deadlocks.
+        if let Some(handle) = self.thread_handle.take() {
+            let _ = handle.join();
+        }
     }
 }
 

@@ -11,7 +11,8 @@
         "git add": true,
         "git commit": true,
         "git tag": true,
-        "rustup": true
+        "rustup": true,
+        "cargo check": true
     },
     "chat.editor.fontSize": 18
 }

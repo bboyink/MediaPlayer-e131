@@ -25,13 +25,15 @@ impl SacnTestSender {
     /// Send test DMX data on specific channels
     /// Channels is a vector of (channel, value) tuples
     pub fn send_test_data(&mut self, channels: Vec<(u16, u8)>) -> Result<(), String> {
-        // Create DMX data buffer (512 channels, all zeros initially)
-        let mut dmx_data = [0u8; 512];
+        // Create DMX data buffer: 1 byte DMX start code (0x00) + 512 channel bytes = 513 bytes
+        // As per ANSI E1.31, property_values[0] is always the DMX start code.
+        let mut dmx_data = [0u8; 513];
+        // dmx_data[0] = 0x00 start code (already zero)
         
-        // Set the specified channel values
+        // Set the specified channel values (channel N lives at index N)
         for (channel, value) in channels {
             if channel > 0 && channel <= 512 {
-                dmx_data[(channel - 1) as usize] = value;
+                dmx_data[channel as usize] = value;
                 println!("Setting channel {} to value {}", channel, value);
             } else {
                 return Err(format!("Invalid channel number: {}. Must be 1-512", channel));
