@@ -1,6 +1,6 @@
 [package]
 name = "mediaplayer-e131"
-version = "0.1.0"
+version = "1.1.0"
 description = "sACN Video Playback Engine with dual monitor support"
 authors = ["Brad Boyink"]
 edition = "2021"
