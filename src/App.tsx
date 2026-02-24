@@ -8,6 +8,7 @@ import videojs from 'video.js'
 import 'video.js/dist/video-js.css'
 import 'rc-slider/assets/index.css'
 import './App.css'
+import { version } from '../package.json'
 
 function App() {
   const [config, setConfig] = useState<AppConfig | null>(null)
@@ -925,7 +926,8 @@ function DmxSection({
               padding: '32px 40px', maxWidth: '380px', width: '90%', textAlign: 'center'
             }}
           >
-            <img src="/logo.png" alt="StagePlayer DMX" style={{ width: '80%', maxWidth: '280px', marginBottom: '16px' }} />
+            <img src="/logo.png" alt="StagePlayer DMX" style={{ width: '80%', maxWidth: '280px', marginBottom: '8px' }} />
+            <p style={{ color: '#888', fontSize: '12px', margin: '0 0 12px' }}>Version {version}</p>
             <p style={{ color: '#ccc', fontSize: '14px', lineHeight: '1.7', margin: 0 }}>
               © 2026 Brad Boyink. All rights reserved.<br />
               Free for use in schools and community theaters.

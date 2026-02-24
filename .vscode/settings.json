@@ -14,7 +14,8 @@
         "rustup": true,
         "cargo check": true,
         "Get-NetTCPConnection": true,
-        "Copy-Item": true
+        "Copy-Item": true,
+        "git push": true
     },
     "chat.editor.fontSize": 18
 }
