@@ -60,7 +60,7 @@
       "editor.formatOnSave": true
     },
     "[json]": {
-      "editor.defaultFormatter": "esbenp.prettier-vscode"
+      "editor.defaultFormatter": j
     },
     
     // Recommended extensions for Windows development

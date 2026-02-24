@@ -12,7 +12,9 @@
         "git commit": true,
         "git tag": true,
         "rustup": true,
-        "cargo check": true
+        "cargo check": true,
+        "Get-NetTCPConnection": true,
+        "Copy-Item": true
     },
     "chat.editor.fontSize": 18
 }

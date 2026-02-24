@@ -207,15 +207,14 @@ pub struct NetworkInterface {
 }
 
 impl AppConfig {
-    /// Get the path to the configuration file (in the same directory as the executable)
+    /// Get the path to the configuration file (%APPDATA%\StagePlayer DMX\configuration.json)
     pub fn get_config_path() -> Result<PathBuf, String> {
-        let exe_path = std::env::current_exe()
-            .map_err(|e| format!("Failed to get executable path: {}", e))?;
-        
-        let exe_dir = exe_path.parent()
-            .ok_or_else(|| "Failed to get executable directory".to_string())?;
-        
-        Ok(exe_dir.join("configuration.json"))
+        let appdata = std::env::var("APPDATA")
+            .map_err(|_| "APPDATA environment variable not set".to_string())?;
+        let dir = PathBuf::from(appdata).join("StagePlayer DMX");
+        std::fs::create_dir_all(&dir)
+            .map_err(|e| format!("Failed to create config directory: {}", e))?;
+        Ok(dir.join("configuration.json"))
     }
     
     /// Load configuration from JSON file, or create default if it doesn't exist

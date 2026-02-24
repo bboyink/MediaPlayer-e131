@@ -140,7 +140,7 @@ function App() {
       })
     }
     setup()
-    return () => { unlistenFn?.(); invoke('stop_sacn_listener').catch(() => {}) }
+    return () => { unlistenFn?.() }
   }, [productionActive])
 
   const getProdMediaFile = (dmxValue: number, files: string[]): string | null => {
@@ -2082,9 +2082,9 @@ function PreviewSection({ config, saveConfig }: { config: AppConfig, saveConfig:
         unlistenFn()
         console.log('DMX event listener removed')
       }
-      invoke('stop_sacn_listener')
-        .then(() => console.log('sACN listener stopped'))
-        .catch(err => console.error('Failed to stop sACN listener:', err))
+      // Do NOT call stop_sacn_listener here — it races with production/other
+      // modes calling start_sacn_listener and would kill the new listener.
+      // stop_sacn_listener is called only from explicit user-initiated actions.
     }
   }, [config.preview, config.monitor1.enabled, config.monitor1.start_channel, 
       config.monitor2.enabled, config.monitor2.start_channel])
@@ -2983,9 +2983,23 @@ function ToolsSection({ config }: { config: AppConfig }) {
         <div className="card" style={{ background: '#2a1111', border: '1px solid #552222', marginBottom: '16px' }}>
           <strong style={{ color: '#f88' }}>⚠ FFmpeg not found</strong>
           <p style={{ margin: '6px 0 0', fontSize: '13px', color: '#ccc' }}>{ffmpegMsg}</p>
-          <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#ccc' }}>
-            Install via: <code style={{ color: '#7cf' }}>winget install ffmpeg</code>
-          </p>
+          <p style={{ margin: '8px 0 4px', fontSize: '13px', color: '#ccc' }}>FFmpeg must be installed separately. Choose one of the options below:</p>
+          <ul style={{ margin: '4px 0 0', paddingLeft: '18px', fontSize: '13px', color: '#ccc', lineHeight: '1.8' }}>
+            <li>
+              <strong>winget</strong> (Windows built-in):{' '}
+              <code style={{ color: '#7cf', userSelect: 'all' }}>winget install Gyan.FFmpeg</code>
+            </li>
+            <li>
+              <strong>Official site:</strong>{' '}
+              <a href="https://ffmpeg.org/download.html" target="_blank" rel="noreferrer" style={{ color: '#7cf' }}>ffmpeg.org/download.html</a>
+            </li>
+            <li>
+              <strong>Gyan.dev builds (Windows):</strong>{' '}
+              <a href="https://www.gyan.dev/ffmpeg/builds/" target="_blank" rel="noreferrer" style={{ color: '#7cf' }}>gyan.dev/ffmpeg/builds</a>
+              {' '}— download <em>ffmpeg-release-essentials.zip</em>, extract, and add the <code style={{ color: '#7cf' }}>bin</code> folder to your PATH.
+            </li>
+          </ul>
+          <p style={{ margin: '8px 0 0', fontSize: '12px', color: '#999' }}>After installing, restart StagePlayer DMX.</p>
         </div>
       )}
 

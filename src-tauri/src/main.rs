@@ -10,7 +10,8 @@ use config::{AppConfig, NetworkInterface, DmxUpdate};
 use sacn_listener::SacnListener;
 use sacn_test_sender::SacnTestSender;
 use std::sync::{Arc, Mutex};
-use tauri::{State, Emitter};
+use std::sync::atomic::{AtomicU32, Ordering};
+use tauri::{State, Emitter, Manager};
 
 struct AppState {
     config: Arc<Mutex<AppConfig>>,
@@ -358,30 +359,55 @@ fn start_sacn_listener(
     // Create new listener
     let mut listener = SacnListener::new(sacn_config);
     
-    // Start listener with callback that emits events
+    // Consecutive emit-failure counter.  Emit can fail transiently during
+    // webview initialisation, but once the webview is destroyed every emit
+    // fails permanently.  After 3 consecutive failures we treat the webview
+    // as gone and signal the thread to stop so the terminal isn't flooded.
+    let consec_failures = Arc::new(AtomicU32::new(0));
+    let consec_failures_cb = Arc::clone(&consec_failures);
+    let app_handle_cb = app_handle.clone();
+    // Share the sacn_listener Arc directly with the callback so it can call
+    // signal_stop() without going through app_handle.state() (which has
+    // lifetime issues inside a 'static move closure).
+    let sacn_arc_cb: Arc<Mutex<Option<SacnListener>>> = Arc::clone(&state.sacn_listener);
+
     listener.start(move |update: DmxUpdate| {
-        // Emit DMX update event to frontend
-        if let Err(e) = app_handle.emit("dmx-update", &update) {
-            eprintln!("Failed to emit DMX update: {}", e);
+        if let Err(_) = app_handle_cb.emit("dmx-update", &update) {
+            let n = consec_failures_cb.fetch_add(1, Ordering::Relaxed) + 1;
+            if n >= 3 {
+                // Webview is gone — stop the listener to end the flood.
+                if let Some(ref mut l) = *sacn_arc_cb.lock().unwrap() {
+                    l.signal_stop();
+                }
+            }
+        } else {
+            consec_failures_cb.store(0, Ordering::Relaxed);
         }
     })?;
-    
+
     *state.sacn_listener.lock().unwrap() = Some(listener);
-    
+
     println!("sACN listener started successfully and listening for packets");
     Ok(())
 }
 
 #[tauri::command]
 fn stop_sacn_listener(state: State<AppState>) -> Result<(), String> {
-    // Take the listener out of the Option and release the mutex BEFORE calling
-    // stop()/join(). Holding the mutex during join() can deadlock if the
-    // listener thread is blocked in app_handle.emit().
-    let listener = state.sacn_listener.lock().unwrap().take();
-    
-    if let Some(mut listener) = listener {
-        listener.stop();
-        println!("sACN listener stopped successfully");
+    // Signal the thread to stop but do NOT join here.
+    //
+    // React cleanup functions are fire-and-forget (they cannot be async), so
+    // stop_sacn_listener can be in-flight at the same moment that a subsequent
+    // start_sacn_listener arrives.  If we joined here we would hold the socket
+    // open while start tries to rebind it, causing "address already in use".
+    //
+    // Instead we just set running=false and leave the SacnListener in the
+    // AppState.  start_sacn_listener always takes the old listener and calls
+    // stop() (which joins) before creating a new one, guaranteeing the port is
+    // free before it tries to bind.
+    let mut guard = state.sacn_listener.lock().unwrap();
+    if let Some(ref mut listener) = *guard {
+        listener.signal_stop();
+        println!("sACN listener stop signalled");
         Ok(())
     } else {
         Err("sACN listener is not running".to_string())
@@ -582,8 +608,8 @@ fn find_ffprobe() -> Option<String> {
 fn check_ffmpeg() -> Result<String, String> {
     match (find_ffmpeg(), find_ffprobe()) {
         (Some(_), Some(_)) => Ok("FFmpeg found".to_string()),
-        (None, _) => Err("FFmpeg not found. Run: winget install ffmpeg".to_string()),
-        (_, None) => Err("FFprobe not found. Reinstall FFmpeg.".to_string()),
+        (None, _) => Err("FFmpeg (ffmpeg.exe) was not found on this system.".to_string()),
+        (_, None) => Err("FFprobe (ffprobe.exe) was not found on this system.".to_string()),
     }
 }
 
@@ -696,6 +722,24 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .manage(state)
+        .setup(|app| {
+            // Stop the sACN listener automatically when the main window is
+            // destroyed (e.g. user closes the app).  React cleanup may not
+            // fire in that case, so without this the listener thread runs
+            // forever and floods the terminal with emit errors.
+            let sacn_arc: Arc<Mutex<Option<SacnListener>>> = Arc::clone(&app.state::<AppState>().sacn_listener);
+            if let Some(window) = app.get_webview_window("main") {
+                window.on_window_event(move |event| {
+                    if let tauri::WindowEvent::Destroyed = event {
+                        if let Some(ref mut l) = *sacn_arc.lock().unwrap() {
+                            l.signal_stop();
+                            println!("Window destroyed: sACN listener stop signalled");
+                        }
+                    }
+                });
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             get_config,
             update_config,

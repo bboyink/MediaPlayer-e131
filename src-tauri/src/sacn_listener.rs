@@ -188,14 +188,23 @@ impl SacnListener {
         Ok(())
     }
     
+    /// Signal the listener thread to stop, then wait for it to exit so the
+    /// socket is fully released before the caller proceeds (e.g. to rebind).
+    /// Do NOT call this while holding any mutex the listener thread also needs.
     pub fn stop(&mut self) {
         *self.running.lock().unwrap() = false;
-        // Wait for the listener thread to fully exit so the socket is released.
-        // Caller must NOT hold any mutexes that the listener thread might also
-        // need (e.g. the outer sacn_listener mutex), otherwise join() deadlocks.
         if let Some(handle) = self.thread_handle.take() {
             let _ = handle.join();
         }
+    }
+
+    /// Set the stop flag without waiting for the thread to exit.
+    /// The thread will notice the flag within one recv-timeout (≤100 ms) and
+    /// exit on its own.  Use this when you cannot afford to block (e.g. from a
+    /// React cleanup that is not async).  A subsequent call to `stop()` or
+    /// `start_sacn_listener` will join the thread before rebinding the port.
+    pub fn signal_stop(&mut self) {
+        *self.running.lock().unwrap() = false;
     }
 }
 
